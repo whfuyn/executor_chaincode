@@ -16,8 +16,11 @@ use crate::chaincode::ExecutorCommand;
 use futures::SinkExt;
 use std::net::SocketAddr;
 
+use prost::Message;
 use crate::protos::chaincode_support_server::ChaincodeSupportServer;
 use cita_cloud_proto::executor::executor_service_server::ExecutorServiceServer;
+use cita_cloud_proto::controller::RawTransaction;
+use cita_cloud_proto::controller::raw_transaction::Tx;
 
 use tonic::transport::Server;
 
@@ -58,7 +61,19 @@ impl ExecutorService for ExecutorServer {
                     .next()
                     .unwrap()
                     .clone();
-                h.send(Task::Executor(ExecutorCommand::new(response.into_inner().value))).await.unwrap();
+                let tx_bytes = response.into_inner().value;
+                let raw_tx = RawTransaction::decode(tx_bytes.as_slice()).unwrap();
+                match raw_tx.tx {
+                    Some(Tx::NormalTx(utx)) => {
+                        if let Some(tx) = utx.transaction {
+                            h.send(Task::Executor(ExecutorCommand::new(tx.data))).await.unwrap();
+                        } else {
+                            println!("block contains empty tx");
+                        }
+                    }
+                    Some(unknown) => println!("block contains unknown tx: `{:?}`", unknown),
+                    None => println!("block contains empty tx"),
+                }
             }
         }
 
@@ -66,6 +81,7 @@ impl ExecutorService for ExecutorServer {
         let reply = Hash { hash };
         Ok(Response::new(reply))
     }
+
     async fn call(&self, request: Request<CallRequest>) -> Result<Response<CallResponse>, Status> {
 
         let value = vec![0u8];

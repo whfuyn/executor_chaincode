@@ -1,25 +1,26 @@
-use std::collections::BTreeMap;
-use futures::{future, stream};
-use futures::channel::mpsc;
-use futures::Stream;
-use futures::StreamExt;
-use futures::SinkExt;
 use super::ExecutorCommand;
-use super::Task;
 use super::MessageDump;
-use crate::queryresult::Kv;
-use crate::protos::GetState;
-use crate::protos::PutState;
-use crate::protos::GetStateByRange;
-use crate::protos::QueryResponse;
-use crate::protos::QueryResultBytes;
+use super::Task;
+use crate::protos::chaincode_message::Type as ChaincodeMsgType;
 use crate::protos::ChaincodeInput;
 use crate::protos::ChaincodeMessage;
-use crate::protos::chaincode_message::Type as ChaincodeMsgType;
+use crate::protos::GetState;
+use crate::protos::GetStateByRange;
+use crate::protos::PutState;
+use crate::protos::QueryResponse;
+use crate::protos::QueryResultBytes;
+use crate::queryresult::Kv;
+use futures::channel::mpsc;
+use futures::SinkExt;
+use futures::Stream;
+use futures::StreamExt;
+use futures::{future, stream};
+use std::collections::BTreeMap;
 
 use prost::Message;
 
 use super::error::ChaincodeError;
+use log::{debug, info};
 
 #[derive(Debug)]
 pub struct Handler {
@@ -35,7 +36,8 @@ pub struct Registry {
 
 impl Handler {
     pub async fn new<T>(mut cc_stream: T) -> Result<Registry, ChaincodeError>
-        where T: Stream<Item = Result<ChaincodeMessage, tonic::Status>> + Unpin + Send + Sync + 'static
+    where
+        T: Stream<Item = Result<ChaincodeMessage, tonic::Status>> + Unpin + Send + Sync + 'static,
     {
         if let Some(Ok(msg)) = cc_stream.next().await {
             if let Some(ChaincodeMsgType::Register) = ChaincodeMsgType::from_i32(msg.r#type) {
@@ -54,7 +56,7 @@ impl Handler {
                 };
                 cc_side.send(ready_req).await.unwrap();
 
-                println!("Chaincode `{}` registered.", cc_name);
+                info!("Chaincode `{}` registered.", cc_name);
 
                 let (task_tx, task_rx) = mpsc::channel(64);
 
@@ -64,19 +66,19 @@ impl Handler {
                 };
 
                 tokio::spawn(async move {
-                    let cc_stream = cc_stream.filter_map(|res|{
-                        match res {
-                            Ok(msg) => future::ready(Some(Task::Chaincode(msg))),
-                            Err(e) => {
-                                println!("Chaincode stream error: `{:?}`", e);
-                                future::ready(None)
-                            }
+                    let cc_stream = cc_stream.filter_map(|res| match res {
+                        Ok(msg) => future::ready(Some(Task::Chaincode(msg))),
+                        Err(e) => {
+                            info!("Chaincode stream error: `{:?}`", e);
+                            future::ready(None)
                         }
                     });
                     let mut task_stream = stream::select(cc_stream, task_rx);
                     while let Some(msg) = task_stream.next().await {
                         match msg {
-                            Task::Chaincode(msg) => handler.handle_chaincode_msg(msg).await.unwrap(),
+                            Task::Chaincode(msg) => {
+                                handler.handle_chaincode_msg(msg).await.unwrap()
+                            }
                             Task::Executor(cmd) => handler.handle_executor_cmd(cmd).await.unwrap(),
                         }
                     }
@@ -109,7 +111,7 @@ impl Handler {
                 match ty {
                     ChaincodeMsgType::Register => {
                         let cc_name = String::from_utf8(msg.payload).unwrap();
-                        println!("Chaincode `{}` registered.", cc_name);
+                        info!("Chaincode `{}` registered.", cc_name);
                         let registered_resp = ChaincodeMessage {
                             r#type: ChaincodeMsgType::Registered as i32,
                             ..Default::default()
@@ -137,12 +139,12 @@ impl Handler {
                         // self.cc_side.send(init_req).await;
                     }
                     ChaincodeMsgType::GetState => {
-                        // dbg!(&self.ledger);
+                        // info!(&self.ledger);
                         let get_state = GetState::decode(&msg.payload[..]).unwrap();
                         let key = get_state.key;
-                        dbg!(&key);
+                        info!("key {}", &key);
                         let value = self.ledger.entry(key).or_default();
-                        dbg!(&value.len());
+                        info!("len {}", &value.len());
 
                         let resp = ChaincodeMessage {
                             r#type: ChaincodeMsgType::Response as i32,
@@ -155,9 +157,9 @@ impl Handler {
                         let put_state = PutState::decode(&msg.payload[..]).unwrap();
 
                         let key = put_state.key;
-                        dbg!(&key);
+                        info!("key {}", &key);
                         let value = put_state.value;
-                        dbg!(&value.len());
+                        info!("len {}", &value.len());
                         self.ledger.insert(key, value);
 
                         let resp = ChaincodeMessage {
@@ -173,18 +175,22 @@ impl Handler {
                         let results = match (start_key.as_str(), end_key.as_str()) {
                             ("", "") => self.ledger.range::<String, _>(..),
                             (start_key, "") => self.ledger.range(start_key.to_owned()..),
-                            (start_key, end_key) => self.ledger.range(start_key.to_owned()..end_key.to_owned()),
-                        };
-                        let results = results.map(|r|{
-                            let query_result = Kv {
-                                key: r.0.clone(),
-                                value: r.1.clone(),
-                                ..Default::default()
-                            };
-                            QueryResultBytes {
-                                result_bytes: query_result.dump()
+                            (start_key, end_key) => {
+                                self.ledger.range(start_key.to_owned()..end_key.to_owned())
                             }
-                        }).collect::<Vec<_>>();
+                        };
+                        let results = results
+                            .map(|r| {
+                                let query_result = Kv {
+                                    key: r.0.clone(),
+                                    value: r.1.clone(),
+                                    ..Default::default()
+                                };
+                                QueryResultBytes {
+                                    result_bytes: query_result.dump(),
+                                }
+                            })
+                            .collect::<Vec<_>>();
 
                         let query_resp = QueryResponse {
                             results,
@@ -208,7 +214,7 @@ impl Handler {
                         };
                         self.cc_side.send(resp).await.unwrap();
                     }
-                    _unknown => println!("recv unknown msg: `{:?}`", msg),
+                    _unknown => info!("recv unknown msg: `{:?}`", msg),
                 }
             }
             None => return Err(ChaincodeError::Unimplemented),
@@ -220,10 +226,11 @@ impl Handler {
         let req = ChaincodeMessage {
             r#type: ChaincodeMsgType::Transaction as i32,
             payload: cmd.payload,
+            // txid: String::from_utf8_lossy(&cmd.tx_hash[..]).to_string(),
+            // channel_id: "123456789".to_string(),
             ..Default::default()
         };
         self.cc_side.send(req).await.unwrap();
-
 
         // match cmd {
         //     ExecutorCommand::Create => {

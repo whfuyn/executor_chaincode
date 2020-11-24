@@ -55,8 +55,8 @@ fn main() {
 
     match opts.subcmd {
         SubCommand::GitInfo => {
-            println!("git version: {}", GIT_VERSION);
-            println!("homepage: {}", GIT_HOMEPAGE);
+            info!("git version: {}", GIT_VERSION);
+            info!("homepage: {}", GIT_HOMEPAGE);
         }
         SubCommand::Run(opts) => {
             // init log4rs

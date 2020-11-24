@@ -2,10 +2,11 @@ mod error;
 mod handler;
 mod server;
 
-use crate::protos::ChaincodeMessage;
 use crate::protos::ChaincodeInput;
-pub use server::ChaincodeSupportService;
+use crate::protos::ChaincodeMessage;
+use log::{debug, info};
 use prost::Message;
+pub use server::ChaincodeSupportService;
 
 #[derive(Debug)]
 pub enum Task {
@@ -15,23 +16,13 @@ pub enum Task {
 
 #[derive(Debug)]
 pub struct ExecutorCommand {
+    tx_hash: Vec<u8>,
     payload: Vec<u8>,
 }
 
 impl ExecutorCommand {
-    pub fn new(payload: Vec<u8>) -> Self {
-        Self { payload }
-    }
-
-    //args includes the function name and its args.
-    pub fn from_args(args: Vec<Vec<u8>>) -> Self {
-        let input = ChaincodeInput {
-            args,
-            ..Default::default()
-        };
-        Self {
-            payload: input.dump(),
-        }
+    pub fn new(tx_hash: Vec<u8>, payload: Vec<u8>) -> Self {
+        Self { tx_hash, payload }
     }
 }
 

@@ -14,4 +14,3 @@ fn main() {
         )
         .unwrap_or_else(|e| panic!("Failed to compile protos {:?}", e));
 }
-

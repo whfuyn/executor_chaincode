@@ -1,19 +1,19 @@
+use std::collections::HashMap;
 use std::pin::Pin;
 use std::sync::Arc;
-use std::collections::HashMap;
 
-use tonic::{Response, Status};
 use tonic::transport::Server;
+use tonic::{Response, Status};
 
+use futures::channel::mpsc;
 use futures::stream;
 use futures::stream::Stream;
 use futures::stream::StreamExt;
-use futures::channel::mpsc;
 
 use parking_lot::RwLock;
 
-use crate::protos::ChaincodeMessage;
 use crate::protos::chaincode_support_server::ChaincodeSupport;
+use crate::protos::ChaincodeMessage;
 
 use super::ExecutorCommand;
 use super::Task;
@@ -33,15 +33,19 @@ impl ChaincodeSupportService {
 
 #[tonic::async_trait]
 impl ChaincodeSupport for ChaincodeSupportService {
-    type RegisterStream = Pin<Box<dyn Stream<Item = Result<ChaincodeMessage, Status>> + Send + Sync + 'static>>;
+    type RegisterStream =
+        Pin<Box<dyn Stream<Item = Result<ChaincodeMessage, Status>> + Send + Sync + 'static>>;
 
     async fn register(
         &self,
         request: tonic::Request<tonic::Streaming<ChaincodeMessage>>,
     ) -> Result<tonic::Response<Self::RegisterStream>, tonic::Status> {
-
         let cc_stream = request.into_inner();
-        let Registry{ name, handle, mut resp_rx } = Handler::new(cc_stream).await.unwrap();
+        let Registry {
+            name,
+            handle,
+            mut resp_rx,
+        } = Handler::new(cc_stream).await.unwrap();
 
         self.cc_handles.write().insert(name, handle);
 
@@ -51,16 +55,10 @@ impl ChaincodeSupport for ChaincodeSupportService {
             }
         };
 
-        Ok(Response::new(Box::pin(output)
-            as Self::RegisterStream))
+        Ok(Response::new(Box::pin(output) as Self::RegisterStream))
     }
 }
 
-
 fn pack_args(args: Vec<&str>) -> Vec<Vec<u8>> {
-    args.into_iter()
-        .map(|s| s.as_bytes().to_vec())
-        .collect()
+    args.into_iter().map(|s| s.as_bytes().to_vec()).collect()
 }
-
-

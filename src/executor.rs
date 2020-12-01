@@ -54,12 +54,12 @@ impl ExecutorService for ExecutorServer {
                 let tx_path = root_path.join("txs").join(filename);
 
                 let tx_bytes = fs::read(tx_path).await.unwrap();
-                // For now, there is only one chaincode.
-                let mut h = self.cc_handles.read().values().next().unwrap().clone();
                 let raw_tx = RawTransaction::decode(tx_bytes.as_slice()).unwrap();
                 match raw_tx.tx {
                     Some(Tx::NormalTx(utx)) => {
                         if let Some(tx) = utx.transaction {
+                            // For now, there is only one chaincode.
+                            let mut h = self.cc_handles.read().values().next().unwrap().clone();
                             h.send(Task::Executor(ExecutorCommand::new(tx_hash, tx.data)))
                                 .await
                                 .unwrap();
@@ -73,6 +73,7 @@ impl ExecutorService for ExecutorServer {
             }
         }
 
+        // TODO: return real hash
         let hash = vec![0u8; 33];
         let reply = Hash { hash };
         Ok(Response::new(reply))

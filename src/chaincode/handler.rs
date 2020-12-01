@@ -258,12 +258,28 @@ impl Handler {
 
     // since we don't support pagination, this msg is unexpected
     async fn handle_query_state_next(&mut self, _msg: ChaincodeMessage) -> Result<()> {
-        Err(Error::Unsupported("pagination query is not supported yet"))
+        Err(Error::Unsupported(
+            "pagination query `query_state_next` is not supported yet",
+        ))
     }
 
-    // since we don't support pagination, this msg is unexpected
-    async fn handle_query_state_close(&mut self, _msg: ChaincodeMessage) -> Result<()> {
-        Err(Error::Unsupported("pagination query is not supported yet"))
+    async fn handle_query_state_close(&mut self, msg: ChaincodeMessage) -> Result<()> {
+        info!("query_close_close, txid: {}", &msg.txid);
+        let query_state_close = pb::QueryStateClose::decode(&msg.payload[..])?;
+        let query_resp = pb::QueryResponse {
+            has_more: false,
+            id: query_state_close.id,
+            ..Default::default()
+        };
+        let resp = ChaincodeMessage {
+            r#type: ChaincodeMsgType::Response as i32,
+            payload: query_resp.dump(),
+            txid: msg.txid,
+            channel_id: msg.channel_id,
+            ..Default::default()
+        };
+        self.cc_side.send(resp).await?;
+        Ok(())
     }
 
     async fn handle_get_query_result(&mut self, _msg: ChaincodeMessage) -> Result<()> {
@@ -455,211 +471,26 @@ impl Handler {
         }
     }
 
-    // async fn handle_chaincode_msg(&mut self, msg: ChaincodeMessage) -> Result<()> {
-    //     match ChaincodeMsgType::from_i32(msg.r#type) {
-    //         Some(ty) => {
-    //             match ty {
-    //                 ChaincodeMsgType::Register => {
-    //                     let cc_name = String::from_utf8(msg.payload).unwrap();
-    //                     info!("Chaincode `{}` registered.", cc_name);
-    //                     let registered_resp = ChaincodeMessage {
-    //                         r#type: ChaincodeMsgType::Registered as i32,
-    //                         ..Default::default()
-    //                     };
-    //                     self.cc_side.send(registered_resp).await.unwrap();
-
-    //                     let ready_req = ChaincodeMessage {
-    //                         r#type: ChaincodeMsgType::Ready as i32,
-    //                         ..Default::default()
-    //                     };
-    //                     self.cc_side.send(ready_req).await.unwrap();
-
-    //                     // let args = vec!["InitLedger".as_bytes().to_vec()];
-    //                     // let input = ChaincodeInput {
-    //                     //     args,
-    //                     //     decorations: HashMap::new(),
-    //                     //     is_init: false,
-    //                     // };
-    //                     // let payload = input.dump();
-    //                     // let init_req = ChaincodeMessage {
-    //                     //     r#type: ChaincodeMsgType::Init as i32,
-    //                     //     payload,
-    //                     //     ..Default::default()
-    //                     // };
-    //                     // self.cc_side.send(init_req).await;
-    //                 }
-    //                 ChaincodeMsgType::GetState => {
-    //                     // info!(&self.ledger);
-    //                     let get_state = GetState::decode(&msg.payload[..]).unwrap();
-    //                     let key = get_state.key;
-    //                     info!("key {}", &key);
-    //                     let value = self.ledger.entry(key).or_default();
-    //                     info!("len {}", &value.len());
-
-    //                     let resp = ChaincodeMessage {
-    //                         r#type: ChaincodeMsgType::Response as i32,
-    //                         payload: value.clone(),
-    //                         ..Default::default()
-    //                     };
-    //                     self.cc_side.send(resp).await.unwrap();
-    //                 }
-    //                 ChaincodeMsgType::PutState => {
-    //                     let put_state = PutState::decode(&msg.payload[..]).unwrap();
-
-    //                     let key = put_state.key;
-    //                     info!("key {}", &key);
-    //                     let value = put_state.value;
-    //                     info!("len {}", &value.len());
-    //                     self.ledger.insert(key, value);
-
-    //                     let resp = ChaincodeMessage {
-    //                         r#type: ChaincodeMsgType::Response as i32,
-    //                         ..Default::default()
-    //                     };
-    //                     self.cc_side.send(resp).await.unwrap();
-    //                 }
-    //                 ChaincodeMsgType::GetStateByRange => {
-    //                     let get_state_by_range = GetStateByRange::decode(&msg.payload[..]).unwrap();
-    //                     let start_key = get_state_by_range.start_key;
-    //                     let end_key = get_state_by_range.end_key;
-    //                     let results = match (start_key.as_str(), end_key.as_str()) {
-    //                         ("", "") => self.ledger.range::<String, _>(..),
-    //                         (start_key, "") => self.ledger.range(start_key.to_owned()..),
-    //                         (start_key, end_key) => {
-    //                             self.ledger.range(start_key.to_owned()..end_key.to_owned())
-    //                         }
-    //                     };
-    //                     let results = results
-    //                         .map(|r| {
-    //                             let query_result = Kv {
-    //                                 key: r.0.clone(),
-    //                                 value: r.1.clone(),
-    //                                 ..Default::default()
-    //                             };
-    //                             QueryResultBytes {
-    //                                 result_bytes: query_result.dump(),
-    //                             }
-    //                         })
-    //                         .collect::<Vec<_>>();
-
-    //                     let query_resp = QueryResponse {
-    //                         results,
-    //                         // metadata: meta_payload,
-    //                         has_more: false,
-    //                         ..Default::default()
-    //                     };
-
-    //                     let payload = query_resp.dump();
-    //                     let resp = ChaincodeMessage {
-    //                         r#type: ChaincodeMsgType::Response as i32,
-    //                         payload,
-    //                         ..Default::default()
-    //                     };
-    //                     self.cc_side.send(resp).await.unwrap();
-    //                 }
-    //                 ChaincodeMsgType::QueryStateClose => {
-    //                     let resp = ChaincodeMessage {
-    //                         r#type: ChaincodeMsgType::Response as i32,
-    //                         ..Default::default()
-    //                     };
-    //                     self.cc_side.send(resp).await.unwrap();
-    //                 }
-    //                 _unknown => info!("recv unknown msg: `{:?}`", msg),
-    //             }
-    //         }
-    //         None => return Err(Error::Unimplemented),
-    //     }
-    //     Ok(())
-    // }
-
     async fn handle_executor_cmd(&mut self, cmd: ExecutorCommand) -> Result<()> {
+        let namespace_id = "cita-cloud".to_string();
+        let channel_id = "123456789".to_string();
+        let txid = String::from_utf8_lossy(&cmd.tx_hash[..]).to_string();
+
+        let ctx = TransactionContext {
+            namespace_id,
+            channel_id: channel_id.clone(),
+            is_init: false,
+        };
         let req = ChaincodeMessage {
             r#type: ChaincodeMsgType::Transaction as i32,
             payload: cmd.payload,
-            // txid: String::from_utf8_lossy(&cmd.tx_hash[..]).to_string(),
-            // channel_id: "123456789".to_string(),
+            txid,
+            channel_id,
             ..Default::default()
         };
+        self.contexts.insert(ctx_id(&req), ctx);
         self.cc_side.send(req).await.unwrap();
 
-        // match cmd {
-        //     ExecutorCommand::Create => {
-        //         let args = vec![
-        //             "CreateAsset",
-        //             "asset8",
-        //             "blue",
-        //             "16",
-        //             "Kelly",
-        //             "750"
-        //         ].iter().map(|s| s.as_bytes().to_vec()).collect::<Vec<_>>();
-        //         let input = ChaincodeInput {
-        //             args,
-        //             decorations: HashMap::new(),
-        //             is_init: false,
-        //         };
-        //         let payload = input.dump();
-        //         let req = ChaincodeMessage {
-        //             r#type: ChaincodeMsgType::Transaction as i32,
-        //             payload,
-        //             ..Default::default()
-        //         };
-        //         self.cc_side.send(req).await;
-        //     }
-        //     ExecutorCommand::Read => {
-        //         let args = vec![
-        //             "ReadAsset",
-        //             "asset8",
-        //         ].iter().map(|s| s.as_bytes().to_vec()).collect::<Vec<_>>();
-        //         let input = ChaincodeInput {
-        //             args,
-        //             decorations: HashMap::new(),
-        //             is_init: false,
-        //         };
-        //         let payload = input.dump();
-        //         let req = ChaincodeMessage {
-        //             r#type: ChaincodeMsgType::Transaction as i32,
-        //             payload,
-        //             ..Default::default()
-        //         };
-        //         self.cc_side.send(req).await;
-        //     }
-        //     ExecutorCommand::GetAll => {
-        //         let args = vec![
-        //             "GetAllAssets",
-        //         ].iter().map(|s| s.as_bytes().to_vec()).collect::<Vec<_>>();
-        //         let input = ChaincodeInput {
-        //             args,
-        //             decorations: HashMap::new(),
-        //             is_init: false,
-        //         };
-        //         let payload = input.dump();
-        //         let req = ChaincodeMessage {
-        //             r#type: ChaincodeMsgType::Transaction as i32,
-        //             payload,
-        //             ..Default::default()
-        //         };
-        //         self.cc_side.send(req).await;
-        //     }
-        //     ExecutorCommand::Transfer => {
-        //         let args = vec![
-        //             "TransferAsset",
-        //             "asset1",
-        //             "Alice",
-        //         ].iter().map(|s| s.as_bytes().to_vec()).collect::<Vec<_>>();
-        //         let input = ChaincodeInput {
-        //             args,
-        //             decorations: HashMap::new(),
-        //             is_init: false,
-        //         };
-        //         let payload = input.dump();
-        //         let req = ChaincodeMessage {
-        //             r#type: ChaincodeMsgType::Transaction as i32,
-        //             payload,
-        //             ..Default::default()
-        //         };
-        //         self.cc_side.send(req).await;
-        //     }
-        // }
         Ok(())
     }
 }

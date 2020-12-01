@@ -1,10 +1,8 @@
 pub mod error;
 mod handler;
 mod server;
-// mod tx_context;
+// mod proposal;
 mod ledger;
-// mod tx_simulator;
-// mod rwset;
 
 use crate::protos::ChaincodeMessage;
 use prost::Message;

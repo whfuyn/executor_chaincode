@@ -39,13 +39,13 @@ impl Ledger {
         start_key: &str,
         end_key: &str,
     ) -> Box<dyn Iterator<Item = Kv> + 'ret> {
-        let start_key = make_key(namespace, start_key);
-        let end_key = make_key(namespace, end_key);
-        let iter = match (start_key.as_str(), end_key.as_str()) {
+        let sk = make_key(namespace, start_key);
+        let ek = make_key(namespace, end_key);
+        let iter = match (start_key, end_key) {
             ("", "") => self.state_store.range::<String, _>(..),
-            (_start, "") => self.state_store.range(start_key..),
-            ("", _end) => self.state_store.range(..end_key),
-            (_start, _end) => self.state_store.range(start_key..end_key),
+            (_start, "") => self.state_store.range(sk..),
+            ("", _end) => self.state_store.range(..ek),
+            (_start, _end) => self.state_store.range(sk..ek),
         };
         Box::new(iter.map(|(k, v)| Kv {
             key: k.clone(),
@@ -107,13 +107,13 @@ impl Ledger {
         start_key: &str,
         end_key: &str,
     ) -> Box<dyn Iterator<Item = Kv> + 'ret> {
-        let start_key = make_collection_key(namespace, collection, start_key);
-        let end_key = make_collection_key(namespace, collection, end_key);
-        let iter = match (start_key.as_str(), end_key.as_str()) {
+        let sk = make_collection_key(namespace, collection, start_key);
+        let ek = make_collection_key(namespace, collection, end_key);
+        let iter = match (start_key, end_key) {
             ("", "") => self.private_store.range::<String, _>(..),
-            (_start, "") => self.private_store.range(start_key..),
-            ("", _end) => self.private_store.range(..end_key),
-            (_start, _end) => self.private_store.range(start_key..end_key),
+            (_start, "") => self.private_store.range(sk..),
+            ("", _end) => self.private_store.range(..ek),
+            (_start, _end) => self.private_store.range(sk..ek),
         };
         Box::new(iter.map(|(k, v)| Kv {
             key: k.clone(),

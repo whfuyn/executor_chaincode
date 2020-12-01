@@ -1,7 +1,25 @@
-use thiserror::Error;
+use crate::protos::ChaincodeMessage;
+use prost::DecodeError;
+use thiserror::Error as ThisError;
 
-#[derive(Debug, Error)]
-pub enum ChaincodeError {
-    #[error("this error haven't implemented")]
-    Unimplemented,
+pub type Result<T> = std::result::Result<T, Error>;
+
+#[derive(Debug, ThisError)]
+pub enum Error {
+    #[error("The first chaincode msg must be register")]
+    NotRegistered,
+    #[error("unsupported: {0}")]
+    Unsupported(&'static str),
+    #[error("chaincode msg decode failed: {0}")]
+    DecodeError(#[from] DecodeError),
+    #[error("chat stream with chaincode is interrupted: {0}")]
+    InterruptedStream(#[from] futures::channel::mpsc::SendError),
+    #[error("invalid operation: {0}")]
+    InvalidOperation(&'static str),
+    #[error("invalid chaincode msg: {0:?}")]
+    InvalidChaincodeMsg(ChaincodeMessage),
+    #[error("unknown chaincode msg type: {0:?}")]
+    UnknownChaincodeMsg(ChaincodeMessage),
+    #[error("other")]
+    Other,
 }

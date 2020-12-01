@@ -14,7 +14,7 @@
 
 use clap::Clap;
 use git_version::git_version;
-use log::{debug, info};
+use log::info;
 
 const GIT_VERSION: &str = git_version!(
     args = ["--tags", "--always", "--dirty=-modified"],

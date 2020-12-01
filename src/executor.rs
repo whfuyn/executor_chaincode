@@ -3,7 +3,7 @@ use cita_cloud_proto::common::Hash;
 use cita_cloud_proto::executor::{
     executor_service_server::ExecutorService, CallRequest, CallResponse,
 };
-use cita_cloud_proto::storage::{storage_service_client::StorageServiceClient, Content, ExtKey};
+// use cita_cloud_proto::storage::{storage_service_client::StorageServiceClient, Content, ExtKey};
 use parking_lot::RwLock;
 use std::sync::Arc;
 use tonic::{Request, Response, Status};
@@ -25,25 +25,18 @@ use tonic::transport::Server;
 
 use crate::chaincode::ChaincodeSupportService;
 
-use log::{debug, info};
+use log::info;
 
 use std::path::Path;
 use tokio::fs;
 
 pub struct ExecutorServer {
-    storage_port: u16,
     cc_handles: Arc<RwLock<HashMap<String, mpsc::Sender<Task>>>>,
 }
 
 impl ExecutorServer {
-    pub fn new(
-        storage_port: u16,
-        cc_handles: Arc<RwLock<HashMap<String, mpsc::Sender<Task>>>>,
-    ) -> Self {
-        Self {
-            storage_port,
-            cc_handles,
-        }
+    pub fn new(cc_handles: Arc<RwLock<HashMap<String, mpsc::Sender<Task>>>>) -> Self {
+        Self { cc_handles }
     }
 }
 
@@ -51,16 +44,10 @@ impl ExecutorServer {
 impl ExecutorService for ExecutorServer {
     async fn exec(&self, request: Request<CompactBlock>) -> Result<Response<Hash>, Status> {
         let block = request.into_inner();
-        // let mut client = {
-        //     let storage_addr = format!("http://127.0.0.1:{}", self.storage_port);
-        //     StorageServiceClient::connect(storage_addr).await.unwrap()
-        // };
 
         if let Some(body) = block.body {
             for tx_hash in body.tx_hashes {
-                // info!("tx_hash: {:?}", &tx_hash);
-                // let request = Request::new(ExtKey { region: 1, key: tx_hash });
-                // let response = client.load(request).await?;
+                info!("tx_hash: {:?}", &tx_hash);
 
                 let filename = hex::encode(&tx_hash);
                 let root_path = Path::new(".");
@@ -69,8 +56,6 @@ impl ExecutorService for ExecutorServer {
                 let tx_bytes = fs::read(tx_path).await.unwrap();
                 // For now, there is only one chaincode.
                 let mut h = self.cc_handles.read().values().next().unwrap().clone();
-                // let tx_bytes = response.into_inner().value;
-                // info!("raw_tx: {:?}", &tx_bytes);
                 let raw_tx = RawTransaction::decode(tx_bytes.as_slice()).unwrap();
                 match raw_tx.tx {
                     Some(Tx::NormalTx(utx)) => {
@@ -118,7 +103,7 @@ impl ChaincodeExecutor {
                 .unwrap();
         });
 
-        let executor_svc = ExecutorServiceServer::new(ExecutorServer::new(50003u16, cc_handles));
+        let executor_svc = ExecutorServiceServer::new(ExecutorServer::new(cc_handles));
         Server::builder()
             .add_service(executor_svc)
             .serve(executor_addr)

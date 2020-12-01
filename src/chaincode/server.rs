@@ -2,11 +2,9 @@ use std::collections::HashMap;
 use std::pin::Pin;
 use std::sync::Arc;
 
-use tonic::transport::Server;
 use tonic::{Response, Status};
 
 use futures::channel::mpsc;
-use futures::stream;
 use futures::stream::Stream;
 use futures::stream::StreamExt;
 
@@ -15,7 +13,6 @@ use parking_lot::RwLock;
 use crate::protos::chaincode_support_server::ChaincodeSupport;
 use crate::protos::ChaincodeMessage;
 
-use super::ExecutorCommand;
 use super::Task;
 
 use super::handler::Handler;
@@ -45,7 +42,7 @@ impl ChaincodeSupport for ChaincodeSupportService {
             name,
             handle,
             mut resp_rx,
-        } = Handler::new(cc_stream).await.unwrap();
+        } = Handler::register(cc_stream).await.unwrap();
 
         self.cc_handles.write().insert(name, handle);
 
@@ -57,8 +54,4 @@ impl ChaincodeSupport for ChaincodeSupportService {
 
         Ok(Response::new(Box::pin(output) as Self::RegisterStream))
     }
-}
-
-fn pack_args(args: Vec<&str>) -> Vec<Vec<u8>> {
-    args.into_iter().map(|s| s.as_bytes().to_vec()).collect()
 }

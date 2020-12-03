@@ -1,8 +1,7 @@
 pub mod error;
 mod handler;
-mod server;
-// mod proposal;
 mod ledger;
+mod server;
 
 use crate::protos::ChaincodeMessage;
 use prost::Message;
@@ -36,4 +35,11 @@ impl<T: Message> MessageDump for T {
         self.encode(&mut payload).unwrap();
         payload
     }
+}
+
+pub fn get_timestamp() -> Option<prost_types::Timestamp> {
+    use std::convert::TryFrom;
+    use std::time::SystemTime;
+    let now = SystemTime::now();
+    prost_types::Timestamp::try_from(now).ok()
 }

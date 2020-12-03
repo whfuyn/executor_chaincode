@@ -1,6 +1,9 @@
+use super::get_timestamp;
 use crate::protos::StateMetadata;
 use crate::queryresult::KeyModification;
 use crate::queryresult::Kv;
+use crypto::digest::Digest;
+use crypto::sha2::Sha256;
 use std::collections::BTreeMap;
 use std::collections::HashMap;
 
@@ -86,7 +89,9 @@ impl Ledger {
         collection: &str,
         key: &str,
     ) -> Option<&Vec<u8>> {
+        // dbg!(&key);
         let private_data_key = make_collection_key(namespace, collection, key);
+        // dbg!(&private_data_key);
         self.private_hash_store.get(&private_data_key)
     }
 
@@ -150,8 +155,14 @@ impl Ledger {
         key: &str,
         value: Vec<u8>,
     ) {
+        // dbg!(&key);
+        // dbg!(&value.len());
         let private_data_key = make_collection_key(namespace, collection, key);
-        self.private_store.insert(private_data_key, value);
+        // dbg!(&private_data_key);
+        self.private_store
+            .insert(private_data_key.clone(), value.clone());
+        let hash = compute_private_data_hash(&value[..]);
+        self.private_hash_store.insert(private_data_key, hash);
     }
 
     pub fn set_private_data_metadata(
@@ -182,10 +193,11 @@ impl Ledger {
         self.state_history.entry(state_key).or_default().push(km);
     }
 
-    // TODO: maybe delete other related data?
     pub fn delete_private_data(&mut self, namespace: &str, collection: &str, key: &str) {
         let private_data_key = make_collection_key(namespace, collection, key);
         self.private_store.remove(&private_data_key);
+        self.private_metadata_store.remove(&private_data_key);
+        self.private_hash_store.remove(&private_data_key);
     }
 }
 
@@ -197,9 +209,24 @@ fn make_collection_key(namespace: &str, collection: &str, key: &str) -> String {
     format!("{}/{}/{}", namespace, collection, key)
 }
 
-fn get_timestamp() -> Option<prost_types::Timestamp> {
-    use std::convert::TryFrom;
-    use std::time::SystemTime;
-    let now = SystemTime::now();
-    prost_types::Timestamp::try_from(now).ok()
+fn compute_private_data_hash(value: &[u8]) -> Vec<u8> {
+    let mut hasher = Sha256::new();
+    hasher.input(value);
+    let value_hash = hasher.result_str();
+
+    hex_str_to_bytes(value_hash.as_str())
+}
+
+fn hex_str_to_bytes(hash: &str) -> Vec<u8> {
+    hash.as_bytes()
+        .chunks_exact(2)
+        .map(|cs| match *cs {
+            [c1, c2] => {
+                let hi = char::from(c1).to_digit(16).unwrap();
+                let lo = char::from(c2).to_digit(16).unwrap();
+                ((hi << 4) | lo) as u8
+            }
+            _ => unreachable!(),
+        })
+        .collect()
 }

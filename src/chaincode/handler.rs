@@ -22,6 +22,7 @@ use log::{info, warn};
 struct TransactionContext {
     pub channel_id: String,
     pub namespace_id: String,
+    pub tx_id: String,
     pub is_init: bool,
 }
 
@@ -31,6 +32,7 @@ pub struct Handler {
     ledger: Ledger,
     contexts: HashMap<String, TransactionContext>,
     total_query_limit: usize,
+    nonce: u64,
 }
 
 pub struct Registry {
@@ -74,6 +76,7 @@ impl Handler {
                     ledger: Ledger::new(),
                     contexts: HashMap::new(),
                     total_query_limit: 65536, // TODO: support pagination
+                    nonce: 0,
                 };
 
                 tokio::spawn(async move {
@@ -81,7 +84,7 @@ impl Handler {
                         Ok(msg) => future::ready(Some(Task::Chaincode(msg))),
                         Err(e) => {
                             info!("Chaincode stream error: `{:?}`", e);
-                            future::ready(None)
+                            panic!("chaincode is down")
                         }
                     });
                     let mut task_stream = stream::select(cc_stream, task_rx);
@@ -151,6 +154,7 @@ impl Handler {
                 "private data APIs are not allowed in chaincode Init()",
             ));
         }
+        // dbg!(&get_state.key);
         let res = self
             .ledger
             .get_private_data_hash(namespace_id, collection, &get_state.key)
@@ -322,6 +326,7 @@ impl Handler {
         let put_state = pb::PutState::decode(&msg.payload[..])?;
         let namespace_id = &tx_context.namespace_id;
         let collection = &put_state.collection;
+        // dbg!(&put_state.key);
         if !collection.is_empty() {
             if tx_context.is_init {
                 return Err(Error::InvalidOperation(
@@ -420,19 +425,22 @@ impl Handler {
     }
 
     async fn handle_completed(&mut self, msg: ChaincodeMessage) -> Result<()> {
-        // TODO
-        // 1. apply rwset
-        // 2. notify
-        // 3. clear tx ctx
-        info!("tx completed: {:?}", msg);
+        let resp = pb::Response::decode(&msg.payload[..])?;
         self.contexts.remove(&msg.txid);
+        let result = String::from_utf8_lossy(&resp.payload);
+        info!("tx completed with msg: {}", resp.message);
+        println!("tx completed with msg: {}", resp.message);
+        info!("tx completed with result: {}", result);
+        println!("tx completed with result: {}", result);
         Ok(())
     }
 
     async fn handle_error(&mut self, msg: ChaincodeMessage) -> Result<()> {
-        // TODO
-        warn!("error: {:?}", msg);
+        let resp = pb::Response::decode(&msg.payload[..])?;
         self.contexts.remove(&msg.txid);
+        let result = String::from_utf8_lossy(&resp.payload);
+        info!("tx error with result: {}", &result);
+        println!("tx error with result: {}", &result);
         Ok(())
     }
 
@@ -443,6 +451,7 @@ impl Handler {
     async fn handle_chaincode_msg(&mut self, msg: ChaincodeMessage) -> Result<()> {
         // TODO: register Txid to prevent overlapping handle messages from chaincode
         // let tx_context = self.contexts.get(&ctx_id(&msg)).expect("context no found");
+        // dbg!(ChaincodeMsgType::from_i32(msg.r#type));
         let msg_ty = match ChaincodeMsgType::from_i32(msg.r#type) {
             Some(ty) => ty,
             None => {
@@ -473,27 +482,95 @@ impl Handler {
 
     async fn handle_executor_cmd(&mut self, cmd: ExecutorCommand) -> Result<()> {
         let namespace_id = "cita-cloud".to_string();
-        let channel_id = "123456789".to_string();
-        let txid = String::from_utf8_lossy(&cmd.tx_hash[..]).to_string();
-
+        let msg = ChaincodeMessage::decode(&cmd.payload[..])?;
         let ctx = TransactionContext {
             namespace_id,
-            channel_id: channel_id.clone(),
+            channel_id: msg.channel_id.clone(),
+            tx_id: msg.txid.clone(),
             is_init: false,
         };
-        let req = ChaincodeMessage {
-            r#type: ChaincodeMsgType::Transaction as i32,
-            payload: cmd.payload,
-            txid,
-            channel_id,
-            ..Default::default()
-        };
-        self.contexts.insert(ctx_id(&req), ctx);
-        self.cc_side.send(req).await.unwrap();
+        self.contexts.insert(ctx_id(&msg), ctx);
+        self.cc_side.send(msg).await.unwrap();
 
         Ok(())
     }
 }
+
+//     async fn handle_executor_cmd(&mut self, cmd: ExecutorCommand) -> Result<()> {
+//         let namespace_id = "cita-cloud".to_string();
+//         let channel_id = "123456789".to_string();
+//         let tx_id = String::from_utf8_lossy(&cmd.tx_hash[..]).to_string();
+
+//         let signed_proposal = {
+//             let mspid = "cita-cloud".to_string();
+//             // this cert is from fabric-samples, peer0.org1.example.com-cert.pem
+//             let cert = "-----BEGIN CERTIFICATE-----
+// MIICJzCCAc6gAwIBAgIQKxBV8QdNKmtS2wu7DExPWzAKBggqhkjOPQQDAjBzMQsw
+// CQYDVQQGEwJVUzETMBEGA1UECBMKQ2FsaWZvcm5pYTEWMBQGA1UEBxMNU2FuIEZy
+// YW5jaXNjbzEZMBcGA1UEChMQb3JnMS5leGFtcGxlLmNvbTEcMBoGA1UEAxMTY2Eu
+// b3JnMS5leGFtcGxlLmNvbTAeFw0yMDEwMTIwODI5MDBaFw0zMDEwMTAwODI5MDBa
+// MGoxCzAJBgNVBAYTAlVTMRMwEQYDVQQIEwpDYWxpZm9ybmlhMRYwFAYDVQQHEw1T
+// YW4gRnJhbmNpc2NvMQ0wCwYDVQQLEwRwZWVyMR8wHQYDVQQDExZwZWVyMC5vcmcx
+// LmV4YW1wbGUuY29tMFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEMutVyQ9OX0Ui
+// 29Cn/E4+eq3SZl1LlSlqMNDup5KQqo9lVY2CKcNuWeKeV+YoDijQRPTLW7o2ZDuJ
+// yn7ZvtOBXaNNMEswDgYDVR0PAQH/BAQDAgeAMAwGA1UdEwEB/wQCMAAwKwYDVR0j
+// BCQwIoAg6WZDnHPhiJpYBVNBJTwE0YW45ThbtJt7qhk7WivY+AIwCgYIKoZIzj0E
+// AwIDRwAwRAIgDNvR3C6j+SVncmmr0GvcomW3j3SqbQ4toRRMOiRa56ICIHHcMiAM
+// S4u7BSot5a2st7igwkukLRk2e5TwFhECcZDA
+// -----END CERTIFICATE-----
+// ";
+//             let signature_header = SignatureHeader {
+//                 mspid,
+//                 id_bytes: cert.as_bytes().to_vec(),
+//                 nonce: self.nonce.to_be_bytes().to_vec(),
+//             };
+//             let channel_header = ChannelHeader {
+//                 channel_id: channel_id.clone(),
+//                 timestamp: get_timestamp(),
+//                 tx_id: tx_id.clone(),
+//             };
+//             let header = Header {
+//                 channel_header,
+//                 signature_header,
+//             };
+//             let transient_map = {
+//                 let mut map = HashMap::new();
+//                 map.insert(
+//                     "asset_properties".to_string(),
+//                     "eyJvYmplY3RfdHlwZSI6ImFzc2V0X3Byb3BlcnRpZXMiLCJhc3NldF9pZCI6ImFzc2V0MSIsImNvbG9yIjoiYmx1ZSIsInNpemUiOjM1LCJzYWx0IjoiYTk0YThmZTVjY2IxOWJhNjFjNGMwODczZDM5MWU5ODc5ODJmYmJkMyJ9"
+//                     .as_bytes().to_vec()
+//                 );
+//                 map
+//             };
+//             let proposal = Proposal {
+//                 header,
+//                 input: cmd.payload.clone(),
+//                 transient_map,
+//             };
+//             SignedProposal {
+//                 proposal,
+//                 signature: vec![1, 2, 3, 4, 5, 6, 7],
+//             }
+//         };
+//         let ctx = TransactionContext {
+//             namespace_id,
+//             channel_id: channel_id.clone(),
+//             is_init: false,
+//         };
+//         let req = ChaincodeMessage {
+//             r#type: ChaincodeMsgType::Transaction as i32,
+//             payload: cmd.payload,
+//             txid: tx_id,
+//             channel_id,
+//             proposal: Some(signed_proposal.get_protos_proposal()),
+//             ..Default::default()
+//         };
+//         self.contexts.insert(ctx_id(&req), ctx);
+//         self.cc_side.send(req).await.unwrap();
+
+//         Ok(())
+//     }
+// }
 
 fn ctx_id(msg: &ChaincodeMessage) -> String {
     let channel_id = &msg.channel_id;

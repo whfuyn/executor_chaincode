@@ -74,8 +74,16 @@ mod common {
     tonic::include_proto!("common");
 }
 
+mod msp {
+    tonic::include_proto!("msp");
+}
+
 mod protos {
     tonic::include_proto!("protos");
+}
+
+mod kvrwset {
+    tonic::include_proto!("kvrwset");
 }
 
 mod queryresult {
@@ -83,12 +91,18 @@ mod queryresult {
 }
 
 use executor::ChaincodeExecutor;
+use parking_lot::RwLock;
+use std::collections::HashMap;
+use std::sync::Arc;
 
 #[tokio::main]
 async fn run(opts: RunOpts) -> Result<(), Box<dyn std::error::Error>> {
     let executor_addr = format!("127.0.0.1:{}", opts.grpc_port).parse()?;
     let chaincode_addr = "127.0.0.1:7052".parse().unwrap();
-    ChaincodeExecutor::run(executor_addr, chaincode_addr).await;
+
+    let cc_handles = Arc::new(RwLock::new(HashMap::new()));
+    let mut cc_executor = ChaincodeExecutor::new(cc_handles);
+    cc_executor.run(executor_addr, chaincode_addr).await;
 
     Ok(())
 }

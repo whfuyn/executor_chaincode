@@ -155,7 +155,6 @@ impl Handler {
                 "private data APIs are not allowed in chaincode Init()",
             ));
         }
-        // dbg!(&get_state.key);
         let res = self
             .ledger
             .get_private_data_hash(namespace_id, collection, &get_state.key)
@@ -226,14 +225,14 @@ impl Handler {
                 ));
             }
             // TODO: check permission
-            self.ledger.get_private_data_range(
+            self.ledger.get_private_data_by_range(
                 namespace_id,
                 collection,
                 &get_state_by_range.start_key,
                 &get_state_by_range.end_key,
             )
         } else {
-            self.ledger.get_state_range(
+            self.ledger.get_state_by_range(
                 namespace_id,
                 &get_state_by_range.start_key,
                 &get_state_by_range.end_key,
@@ -268,6 +267,7 @@ impl Handler {
         ))
     }
 
+    // Even without pagination, we still receive a close notification
     async fn handle_query_state_close(&mut self, msg: ChaincodeMessage) -> Result<()> {
         info!("query_close_close, txid: {}", &msg.txid);
         let query_state_close = pb::QueryStateClose::decode(&msg.payload[..])?;
@@ -287,6 +287,7 @@ impl Handler {
         Ok(())
     }
 
+    // This msg is to execute queries on db, which is not supported
     async fn handle_get_query_result(&mut self, _msg: ChaincodeMessage) -> Result<()> {
         Err(Error::Unsupported("get_query_result is not supported yet"))
     }
@@ -420,6 +421,8 @@ impl Handler {
         Ok(())
     }
 
+    // A chaincode may call other chaincode during the execution of a transaction,
+    // it's not supported yet.
     async fn handle_invoke_chaincode(&mut self, _msg: ChaincodeMessage) -> Result<()> {
         Err(Error::Unsupported("invoke chaincode is not supported yet"))
     }
@@ -444,6 +447,7 @@ impl Handler {
         Ok(())
     }
 
+    // TODO: what else should I do with this keepalive msg?
     async fn handle_keepalive(&mut self, _msg: ChaincodeMessage) -> Result<()> {
         Ok(())
     }

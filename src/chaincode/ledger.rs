@@ -36,7 +36,7 @@ impl Ledger {
         self.state_metadata_store.get(&state_key)
     }
 
-    pub fn get_state_range<'this: 'ret, 'ret>(
+    pub fn get_state_by_range<'this: 'ret, 'ret>(
         &'this self,
         namespace: &str,
         start_key: &str,
@@ -50,10 +50,13 @@ impl Ledger {
             ("", _end) => self.state_store.range(..ek),
             (_start, _end) => self.state_store.range(sk..ek),
         };
-        Box::new(iter.map(|(k, v)| Kv {
-            key: k.clone(),
-            value: v.clone(),
-            ..Default::default()
+        Box::new(iter.map(|(k, v)| {
+            let mut tokens = k.split('/');
+            Kv {
+                namespace: tokens.next().unwrap().to_string(),
+                key: tokens.next().unwrap().to_string(),
+                value: v.clone(),
+            }
         }))
     }
 
@@ -105,7 +108,7 @@ impl Ledger {
         self.private_metadata_store.get(&private_data_key)
     }
 
-    pub fn get_private_data_range<'this: 'ret, 'ret>(
+    pub fn get_private_data_by_range<'this: 'ret, 'ret>(
         &'this self,
         namespace: &str,
         collection: &str,
@@ -120,10 +123,13 @@ impl Ledger {
             ("", _end) => self.private_store.range(..ek),
             (_start, _end) => self.private_store.range(sk..ek),
         };
-        Box::new(iter.map(|(k, v)| Kv {
-            key: k.clone(),
-            value: v.clone(),
-            ..Default::default()
+        Box::new(iter.map(|(k, v)| {
+            let mut tokens = k.split('/');
+            Kv {
+                namespace: tokens.next().unwrap().to_string(),
+                key: tokens.nth(1).unwrap().to_string(),
+                value: v.clone(),
+            }
         }))
     }
 
@@ -230,4 +236,285 @@ fn hex_str_to_bytes(hash: &str) -> Vec<u8> {
             _ => unreachable!(),
         })
         .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_make_key() {
+        let namespace = "namespace";
+        let key = "key";
+        assert_eq!(make_key(namespace, key), String::from("namespace/key"));
+    }
+
+    #[test]
+    fn test_make_collection_key() {
+        let namespace = "namespace";
+        let collection = "collection";
+        let key = "key";
+        assert_eq!(
+            make_collection_key(namespace, collection, key),
+            String::from("namespace/collection/key")
+        );
+    }
+
+    #[test]
+    fn test_compute_private_data_hash() {
+        let data = "secret";
+        let expect = b"+\xb8\rS{\x1d\xa3\xe3\x8b\xd3\x03a\xaa\x85V\x86\xbd\xe0\xea\xcdqb\xfe\xf6\xa2_\xe9{\xf5'\xa2[";
+        assert_eq!(compute_private_data_hash(data.as_bytes()), expect.to_vec());
+    }
+
+    #[test]
+    fn test_get_set_state() {
+        let mut ledger = Ledger::new();
+        let namespace = "namespace";
+        let tx_id = "123";
+        let key = "key";
+        let value = "value".as_bytes().to_vec();
+        ledger.set_state(namespace, tx_id, key, value.clone());
+        assert_eq!(ledger.get_state(namespace, key), Some(&value));
+    }
+
+    #[test]
+    fn test_get_set_metadata() {
+        let mut ledger = Ledger::new();
+        let namespace = "namespace";
+        let key = "key";
+        let metakey = "metakey".to_string();
+        let value = "value".as_bytes().to_vec();
+        let metadata = StateMetadata {
+            metakey: metakey.clone(),
+            value: value.clone(),
+        };
+        ledger.set_state_metadata(namespace, key, metadata);
+        let expect = {
+            let mut meta_map = HashMap::new();
+            meta_map.insert(metakey, value);
+            meta_map
+        };
+        assert_eq!(ledger.get_state_metadata(namespace, key), Some(&expect));
+    }
+
+    #[test]
+    fn test_get_set_private_data() {
+        let mut ledger = Ledger::new();
+        let namespace = "namespace";
+        let collection = "collection";
+        let key = "key";
+        let value = "value".as_bytes().to_vec();
+        ledger.set_private_data(namespace, collection, key, value.clone());
+        assert_eq!(
+            ledger.get_private_data(namespace, collection, key),
+            Some(&value)
+        );
+    }
+
+    #[test]
+    fn test_get_set_private_data_metadata() {
+        let mut ledger = Ledger::new();
+        let namespace = "namespace";
+        let collection = "collection";
+        let key = "key";
+        let metakey = "metakey".to_string();
+        let value = "value".as_bytes().to_vec();
+        let metadata = StateMetadata {
+            metakey: metakey.clone(),
+            value: value.clone(),
+        };
+        ledger.set_private_data_metadata(namespace, collection, key, metadata);
+        let expect = {
+            let mut meta_map = HashMap::new();
+            meta_map.insert(metakey, value);
+            meta_map
+        };
+        assert_eq!(
+            ledger.get_private_data_metadata(namespace, collection, key),
+            Some(&expect)
+        );
+    }
+
+    #[test]
+    fn test_get_private_data_hash() {
+        let mut ledger = Ledger::new();
+        let namespace = "namespace";
+        let collection = "collection";
+        let key = "key";
+        let value = "value".as_bytes().to_vec();
+        ledger.set_private_data(namespace, collection, key, value.clone());
+        let expect = compute_private_data_hash(&value[..]);
+        assert_eq!(
+            ledger.get_private_data_hash(namespace, collection, key),
+            Some(&expect)
+        );
+    }
+
+    #[test]
+    fn test_get_state_by_range() {
+        let mut ledger = Ledger::new();
+        let mut expect = vec![];
+        let namespace = "namespace".to_string();
+        for i in 0..10 {
+            let tx_id = format!("123{}", i);
+            let key = format!("key{}", i);
+            let value = format!("value{}", i).as_bytes().to_vec();
+            ledger.set_state(&namespace, &tx_id, &key, value.clone());
+            expect.push(Kv {
+                namespace: namespace.clone(),
+                key,
+                value,
+            });
+        }
+        assert_eq!(
+            ledger
+                .get_state_by_range(&namespace, "", "")
+                .collect::<Vec<_>>(),
+            expect[..].to_vec()
+        );
+        assert_eq!(
+            ledger
+                .get_state_by_range(&namespace, "key3", "")
+                .collect::<Vec<_>>(),
+            expect[3..].to_vec()
+        );
+        assert_eq!(
+            ledger
+                .get_state_by_range(&namespace, "", "key8")
+                .collect::<Vec<_>>(),
+            expect[..8].to_vec()
+        );
+        assert_eq!(
+            ledger
+                .get_state_by_range(&namespace, "key2", "key5")
+                .collect::<Vec<_>>(),
+            expect[2..5].to_vec()
+        );
+        assert_eq!(
+            ledger
+                .get_state_by_range(&namespace, "key0", "key9")
+                .collect::<Vec<_>>(),
+            expect[0..9].to_vec()
+        );
+    }
+
+    #[test]
+    fn test_get_private_data_by_range() {
+        let mut ledger = Ledger::new();
+        let mut expect = vec![];
+        let namespace = "namespace".to_string();
+        let collection = "collection".to_string();
+        for i in 0..10 {
+            let key = format!("key{}", i);
+            let value = format!("value{}", i).as_bytes().to_vec();
+            ledger.set_private_data(&namespace, &collection, &key, value.clone());
+            expect.push(Kv {
+                namespace: namespace.clone(),
+                key,
+                value,
+            });
+        }
+        assert_eq!(
+            ledger
+                .get_private_data_by_range(&namespace, &collection, "", "")
+                .collect::<Vec<_>>(),
+            expect[..].to_vec()
+        );
+        assert_eq!(
+            ledger
+                .get_private_data_by_range(&namespace, &collection, "key3", "")
+                .collect::<Vec<_>>(),
+            expect[3..].to_vec()
+        );
+        assert_eq!(
+            ledger
+                .get_private_data_by_range(&namespace, &collection, "", "key8")
+                .collect::<Vec<_>>(),
+            expect[..8].to_vec()
+        );
+        assert_eq!(
+            ledger
+                .get_private_data_by_range(&namespace, &collection, "key2", "key5")
+                .collect::<Vec<_>>(),
+            expect[2..5].to_vec()
+        );
+        assert_eq!(
+            ledger
+                .get_private_data_by_range(&namespace, &collection, "key0", "key9")
+                .collect::<Vec<_>>(),
+            expect[0..9].to_vec()
+        );
+    }
+
+    #[test]
+    fn test_get_history_for_key() {
+        let mut ledger = Ledger::new();
+        let namespace = "namespace";
+        let key = "key";
+        let mut expect = vec![];
+        for i in 0..10 {
+            let tx_id = format!("123{}", i);
+            let value = format!("value{}", i).as_bytes().to_vec();
+            ledger.set_state(namespace, &tx_id, key, value.clone());
+            expect.push(KeyModification {
+                tx_id,
+                value,
+                timestamp: get_timestamp(),
+                is_delete: false,
+            });
+        }
+        let tx_id = "666".to_string();
+        ledger.delete_state(namespace, &tx_id, key);
+        expect.push(KeyModification {
+            tx_id,
+            value: vec![],
+            timestamp: get_timestamp(),
+            is_delete: true,
+        });
+
+        let tx_id = "667".to_string();
+        let value = "value667".as_bytes().to_vec();
+        ledger.set_state(namespace, &tx_id, key, value.clone());
+        expect.push(KeyModification {
+            tx_id,
+            value,
+            timestamp: None,
+            is_delete: false,
+        });
+        let res = ledger.get_history_for_key(&namespace, &key);
+        assert!(res.zip(expect.into_iter()).all(|(r, e)| {
+            // Skip timestamp comparison.
+            r.tx_id == e.tx_id && r.value == e.value && r.is_delete == e.is_delete
+        }));
+    }
+
+    #[test]
+    fn test_delete_state() {
+        let mut ledger = Ledger::new();
+        let namespace = "namespace";
+        let key = "key";
+        let tx_id = "123";
+        let value = "value".as_bytes().to_vec();
+        ledger.set_state(namespace, tx_id, key, value.clone());
+        assert_eq!(ledger.get_state(namespace, key), Some(&value));
+        ledger.delete_state(namespace, tx_id, key);
+        assert_eq!(ledger.get_state(&namespace, key), None);
+    }
+
+    #[test]
+    fn test_delete_private_data() {
+        let mut ledger = Ledger::new();
+        let namespace = "namespace";
+        let collection = "collection";
+        let key = "key";
+        let value = "value".as_bytes().to_vec();
+        ledger.set_private_data(namespace, collection, key, value.clone());
+        assert_eq!(
+            ledger.get_private_data(namespace, collection, key),
+            Some(&value)
+        );
+        ledger.delete_private_data(namespace, collection, key);
+        assert_eq!(ledger.get_private_data(namespace, collection, key), None);
+    }
 }

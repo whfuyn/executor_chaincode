@@ -96,14 +96,14 @@ impl ChaincodeExecutor {
         Self { cc_handles }
     }
 
-    pub async fn run(&mut self, executor_addr: SocketAddr, chaincode_addr: SocketAddr) {
+    pub async fn run(&mut self, executor_addr: SocketAddr, chaincode_listen_addr: SocketAddr) {
         let chaincode_support = ChaincodeSupportService::new(self.cc_handles.clone());
         let ccs_svc = ChaincodeSupportServer::new(chaincode_support);
 
         tokio::spawn(async move {
             Server::builder()
                 .add_service(ccs_svc)
-                .serve(chaincode_addr)
+                .serve(chaincode_listen_addr)
                 .await
                 .unwrap();
         });
@@ -133,7 +133,7 @@ mod tests {
     // use cita_cloud_proto::blockchain::CompactBlock;
 
     const EXECUTOR_ADDR: &'static str = "127.0.0.1:50003";
-    const CHAINCODE_ADDR: &'static str = "127.0.0.1:7052";
+    const CHAINCODE_LISTEN_ADDR: &'static str = "127.0.0.1:7052";
 
     fn run_executor() -> ChaincodeExecutor {
         let cc_handles = Arc::new(RwLock::new(HashMap::new()));
@@ -143,7 +143,7 @@ mod tests {
             cc_executor
                 .run(
                     EXECUTOR_ADDR.parse().unwrap(),
-                    CHAINCODE_ADDR.parse().unwrap(),
+                    CHAINCODE_LISTEN_ADDR.parse().unwrap(),
                 )
                 .await;
         });
@@ -276,7 +276,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_basic() {
+    async fn test_asset_transfer_secured_agreement() {
         let channel_id = "cita-cloud".to_string();
         // certs are from fabric-samples
         let org1_mspid = "Org1MSP".to_string();
@@ -372,10 +372,20 @@ Jfn1p8cfo4BPd3tSllZEIbXE2uCMkKE4LGmo
             &["asset1","Org2MSP"],
             &[("asset_properties", "asset1's property"), ("asset_price", "{\"asset_id\":\"asset1\",\"trade_id\":\"109f4b3c50d7b0df729d299bc6f8e9ef9066971f\",\"price\":100}")]
         ));
-        txs.push(org1.build("ReadAsset", &["asset1"], &[]));
+        txs.push(org2.build("ReadAsset", &["asset1"], &[]));
+        txs.push(org2.build("GetAssetPrivateProperties", &["asset1"], &[]));
+        txs.push(org2.build(
+            "ChangePublicDescription",
+            &["asset1", "This asset is not for sale"],
+            &[],
+        ));
         txs.push(org2.build("ReadAsset", &["asset1"], &[]));
 
-        let mut ticker = time::interval(Duration::from_secs(3));
+        exec_txs(txs).await;
+    }
+
+    async fn exec_txs(txs: Vec<TestTransaction>) {
+        let mut ticker = time::interval(Duration::from_secs(2));
         ticker.tick().await;
 
         let executor = run_executor();
@@ -397,7 +407,6 @@ Jfn1p8cfo4BPd3tSllZEIbXE2uCMkKE4LGmo
                 .await
                 .unwrap();
         }
-        // ticker.tick().await;
         ticker.tick().await;
     }
 }

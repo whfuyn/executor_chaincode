@@ -217,6 +217,7 @@ fn compute_private_data_hash(value: &[u8]) -> Vec<u8> {
     hex_str_to_bytes(value_hash.as_str())
 }
 
+// turn "1f2b" to [0x1f, 0x2b]
 fn hex_str_to_bytes(hash: &str) -> Vec<u8> {
     hash.as_bytes()
         .chunks_exact(2)

@@ -21,13 +21,13 @@ use log::{info, warn};
 #[derive(Debug)]
 struct TransactionContext {
     pub channel_id: String,
-    pub namespace_id: String,
     pub tx_id: String,
     pub is_init: bool,
 }
 
 #[derive(Debug)]
 pub struct Handler {
+    cc_name: String,
     cc_side: mpsc::Sender<ChaincodeMessage>,
     ledger: Ledger,
     contexts: HashMap<String, TransactionContext>,
@@ -72,6 +72,7 @@ impl Handler {
                 let (task_tx, task_rx) = mpsc::channel(64);
 
                 let mut handler = Self {
+                    cc_name: cc_name.clone(),
                     cc_side,
                     ledger: Ledger::new(),
                     contexts: HashMap::new(),
@@ -116,7 +117,7 @@ impl Handler {
     async fn handle_get_state(&mut self, msg: ChaincodeMessage) -> Result<()> {
         let tx_context = self.contexts.get(&ctx_id(&msg)).expect("context no found");
         let get_state = pb::GetState::decode(&msg.payload[..])?;
-        let namespace_id = &tx_context.namespace_id;
+        let namespace_id = &self.cc_name;
         let collection = &get_state.collection;
         let res = if !collection.is_empty() {
             if tx_context.is_init {
@@ -147,7 +148,7 @@ impl Handler {
     async fn handle_get_private_data_hash(&mut self, msg: ChaincodeMessage) -> Result<()> {
         let tx_context = self.contexts.get(&ctx_id(&msg)).expect("context no found");
         let get_state = pb::GetState::decode(&msg.payload[..])?;
-        let namespace_id = &tx_context.namespace_id;
+        let namespace_id = &self.cc_name;
         let collection = &get_state.collection;
         if tx_context.is_init {
             return Err(Error::InvalidOperation(
@@ -174,7 +175,7 @@ impl Handler {
     async fn handle_get_state_metadata(&mut self, msg: ChaincodeMessage) -> Result<()> {
         let tx_context = self.contexts.get(&ctx_id(&msg)).expect("context no found");
         let get_state_metadata = pb::GetStateMetadata::decode(&msg.payload[..])?;
-        let namespace_id = &tx_context.namespace_id;
+        let namespace_id = &self.cc_name;
         let collection = &get_state_metadata.collection;
         let metadata = if !collection.is_empty() {
             if tx_context.is_init {
@@ -216,7 +217,7 @@ impl Handler {
     async fn handle_get_state_by_range(&mut self, msg: ChaincodeMessage) -> Result<()> {
         let tx_context = self.contexts.get(&ctx_id(&msg)).expect("context no found");
         let get_state_by_range = pb::GetStateByRange::decode(&msg.payload[..])?;
-        let namespace_id = &tx_context.namespace_id;
+        let namespace_id = &self.cc_name;
         let collection = &get_state_by_range.collection;
         let query_result = if !collection.is_empty() {
             if tx_context.is_init {
@@ -291,9 +292,8 @@ impl Handler {
     }
 
     async fn handle_get_history_for_key(&mut self, msg: ChaincodeMessage) -> Result<()> {
-        let tx_context = self.contexts.get(&ctx_id(&msg)).expect("context no found");
         let get_history_for_key = pb::GetHistoryForKey::decode(&msg.payload[..])?;
-        let namespace_id = &tx_context.namespace_id;
+        let namespace_id = &self.cc_name;
 
         let query_result = self
             .ledger
@@ -324,7 +324,7 @@ impl Handler {
     async fn handle_put_state(&mut self, msg: ChaincodeMessage) -> Result<()> {
         let tx_context = self.contexts.get(&ctx_id(&msg)).expect("context no found");
         let put_state = pb::PutState::decode(&msg.payload[..])?;
-        let namespace_id = &tx_context.namespace_id;
+        let namespace_id = &self.cc_name;
         let collection = &put_state.collection;
         // dbg!(&put_state.key);
         if !collection.is_empty() {
@@ -363,7 +363,7 @@ impl Handler {
                 ));
             }
         };
-        let namespace_id = &tx_context.namespace_id;
+        let namespace_id = &self.cc_name;
         let collection = &put_state_metadata.collection;
         if !collection.is_empty() {
             if tx_context.is_init {
@@ -395,7 +395,7 @@ impl Handler {
     async fn handle_del_state(&mut self, msg: ChaincodeMessage) -> Result<()> {
         let tx_context = self.contexts.get(&ctx_id(&msg)).expect("context no found");
         let del_state = pb::DelState::decode(&msg.payload[..])?;
-        let namespace_id = &tx_context.namespace_id;
+        let namespace_id = &self.cc_name;
         let collection = &del_state.collection;
         if !collection.is_empty() {
             if tx_context.is_init {
@@ -449,9 +449,6 @@ impl Handler {
     }
 
     async fn handle_chaincode_msg(&mut self, msg: ChaincodeMessage) -> Result<()> {
-        // TODO: register Txid to prevent overlapping handle messages from chaincode
-        // let tx_context = self.contexts.get(&ctx_id(&msg)).expect("context no found");
-        // dbg!(ChaincodeMsgType::from_i32(msg.r#type));
         let msg_ty = match ChaincodeMsgType::from_i32(msg.r#type) {
             Some(ty) => ty,
             None => {
@@ -481,10 +478,8 @@ impl Handler {
     }
 
     async fn handle_executor_cmd(&mut self, cmd: ExecutorCommand) -> Result<()> {
-        let namespace_id = "cita-cloud".to_string();
         let msg = ChaincodeMessage::decode(&cmd.payload[..])?;
         let ctx = TransactionContext {
-            namespace_id,
             channel_id: msg.channel_id.clone(),
             tx_id: msg.txid.clone(),
             is_init: false,

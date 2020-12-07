@@ -98,7 +98,10 @@ use std::sync::Arc;
 #[tokio::main]
 async fn run(opts: RunOpts) -> Result<(), Box<dyn std::error::Error>> {
     let executor_addr = format!("127.0.0.1:{}", opts.grpc_port).parse()?;
-    let chaincode_listen_addr = "127.0.0.1:7052".parse().unwrap();
+    let chaincode_listen_addr = {
+        let executor_port: u16 = opts.grpc_port.parse()?;
+        format!("127.0.0.1:7{}52", (executor_port - 50000) / 1000).parse()?
+    };
 
     let cc_handles = Arc::new(RwLock::new(HashMap::new()));
     let mut cc_executor = ChaincodeExecutor::new(cc_handles);

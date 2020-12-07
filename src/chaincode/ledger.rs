@@ -92,9 +92,7 @@ impl Ledger {
         collection: &str,
         key: &str,
     ) -> Option<&Vec<u8>> {
-        // dbg!(&key);
         let private_data_key = make_collection_key(namespace, collection, key);
-        // dbg!(&private_data_key);
         self.private_hash_store.get(&private_data_key)
     }
 
@@ -161,10 +159,7 @@ impl Ledger {
         key: &str,
         value: Vec<u8>,
     ) {
-        // dbg!(&key);
-        // dbg!(&value.len());
         let private_data_key = make_collection_key(namespace, collection, key);
-        // dbg!(&private_data_key);
         self.private_store
             .insert(private_data_key.clone(), value.clone());
         let hash = compute_private_data_hash(&value[..]);

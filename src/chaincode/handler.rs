@@ -1,28 +1,30 @@
-use super::ledger::Ledger;
-use super::ExecutorCommand;
-use super::MessageDump;
-use super::Task;
-use crate::protos as pb;
-use crate::protos::chaincode_message::Type as ChaincodeMsgType;
-use crate::protos::ChaincodeMessage;
 use futures::channel::mpsc;
+use futures::channel::oneshot;
 use futures::SinkExt;
 use futures::Stream;
 use futures::StreamExt;
 use futures::{future, stream};
-use std::collections::HashMap;
-
+use log::{info, warn};
 use prost::Message;
+use std::collections::HashMap;
 
 use super::error::Error;
 use super::error::Result;
-use log::{info, warn};
+use super::ledger::Ledger;
+use super::ExecutorCommand;
+use super::MessageDump;
+use super::Task;
+use crate::chaincode::TransactionResult;
+use crate::protos as pb;
+use crate::protos::chaincode_message::Type as ChaincodeMsgType;
+use crate::protos::ChaincodeMessage;
 
 #[derive(Debug)]
 struct TransactionContext {
     pub channel_id: String,
     pub tx_id: String,
     pub is_init: bool,
+    pub notifier: oneshot::Sender<TransactionResult>,
 }
 
 #[derive(Debug)]
@@ -429,21 +431,27 @@ impl Handler {
 
     async fn handle_completed(&mut self, msg: ChaincodeMessage) -> Result<()> {
         let resp = pb::Response::decode(&msg.payload[..])?;
-        self.contexts.remove(&msg.txid);
+        let ctx = self.contexts.remove(&ctx_id(&msg)).unwrap();
         let result = String::from_utf8_lossy(&resp.payload);
-        info!("tx completed with msg: {}", resp.message);
-        println!("tx completed with msg: {}", resp.message);
-        info!("tx completed with result: {}", result);
-        println!("tx completed with result: {}", result);
+        ctx.notifier
+            .send(TransactionResult {
+                msg: resp.message,
+                result: result.to_string(),
+            })
+            .unwrap();
         Ok(())
     }
 
     async fn handle_error(&mut self, msg: ChaincodeMessage) -> Result<()> {
         let resp = pb::Response::decode(&msg.payload[..])?;
-        self.contexts.remove(&msg.txid);
+        let ctx = self.contexts.remove(&ctx_id(&msg)).unwrap();
         let result = String::from_utf8_lossy(&resp.payload);
-        info!("tx error with result: {}", &result);
-        println!("tx error with result: {}", &result);
+        ctx.notifier
+            .send(TransactionResult {
+                msg: resp.message,
+                result: result.to_string(),
+            })
+            .unwrap();
         Ok(())
     }
 
@@ -487,6 +495,7 @@ impl Handler {
             channel_id: msg.channel_id.clone(),
             tx_id: msg.txid.clone(),
             is_init: false,
+            notifier: cmd.notifier,
         };
         self.contexts.insert(ctx_id(&msg), ctx);
         self.cc_side.send(msg).await.unwrap();
@@ -494,82 +503,6 @@ impl Handler {
         Ok(())
     }
 }
-
-//     async fn handle_executor_cmd(&mut self, cmd: ExecutorCommand) -> Result<()> {
-//         let namespace_id = "cita-cloud".to_string();
-//         let channel_id = "123456789".to_string();
-//         let tx_id = String::from_utf8_lossy(&cmd.tx_hash[..]).to_string();
-
-//         let signed_proposal = {
-//             let mspid = "cita-cloud".to_string();
-//             // this cert is from fabric-samples, peer0.org1.example.com-cert.pem
-//             let cert = "-----BEGIN CERTIFICATE-----
-// MIICJzCCAc6gAwIBAgIQKxBV8QdNKmtS2wu7DExPWzAKBggqhkjOPQQDAjBzMQsw
-// CQYDVQQGEwJVUzETMBEGA1UECBMKQ2FsaWZvcm5pYTEWMBQGA1UEBxMNU2FuIEZy
-// YW5jaXNjbzEZMBcGA1UEChMQb3JnMS5leGFtcGxlLmNvbTEcMBoGA1UEAxMTY2Eu
-// b3JnMS5leGFtcGxlLmNvbTAeFw0yMDEwMTIwODI5MDBaFw0zMDEwMTAwODI5MDBa
-// MGoxCzAJBgNVBAYTAlVTMRMwEQYDVQQIEwpDYWxpZm9ybmlhMRYwFAYDVQQHEw1T
-// YW4gRnJhbmNpc2NvMQ0wCwYDVQQLEwRwZWVyMR8wHQYDVQQDExZwZWVyMC5vcmcx
-// LmV4YW1wbGUuY29tMFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEMutVyQ9OX0Ui
-// 29Cn/E4+eq3SZl1LlSlqMNDup5KQqo9lVY2CKcNuWeKeV+YoDijQRPTLW7o2ZDuJ
-// yn7ZvtOBXaNNMEswDgYDVR0PAQH/BAQDAgeAMAwGA1UdEwEB/wQCMAAwKwYDVR0j
-// BCQwIoAg6WZDnHPhiJpYBVNBJTwE0YW45ThbtJt7qhk7WivY+AIwCgYIKoZIzj0E
-// AwIDRwAwRAIgDNvR3C6j+SVncmmr0GvcomW3j3SqbQ4toRRMOiRa56ICIHHcMiAM
-// S4u7BSot5a2st7igwkukLRk2e5TwFhECcZDA
-// -----END CERTIFICATE-----
-// ";
-//             let signature_header = SignatureHeader {
-//                 mspid,
-//                 id_bytes: cert.as_bytes().to_vec(),
-//                 nonce: self.nonce.to_be_bytes().to_vec(),
-//             };
-//             let channel_header = ChannelHeader {
-//                 channel_id: channel_id.clone(),
-//                 timestamp: get_timestamp(),
-//                 tx_id: tx_id.clone(),
-//             };
-//             let header = Header {
-//                 channel_header,
-//                 signature_header,
-//             };
-//             let transient_map = {
-//                 let mut map = HashMap::new();
-//                 map.insert(
-//                     "asset_properties".to_string(),
-//                     "eyJvYmplY3RfdHlwZSI6ImFzc2V0X3Byb3BlcnRpZXMiLCJhc3NldF9pZCI6ImFzc2V0MSIsImNvbG9yIjoiYmx1ZSIsInNpemUiOjM1LCJzYWx0IjoiYTk0YThmZTVjY2IxOWJhNjFjNGMwODczZDM5MWU5ODc5ODJmYmJkMyJ9"
-//                     .as_bytes().to_vec()
-//                 );
-//                 map
-//             };
-//             let proposal = Proposal {
-//                 header,
-//                 input: cmd.payload.clone(),
-//                 transient_map,
-//             };
-//             SignedProposal {
-//                 proposal,
-//                 signature: vec![1, 2, 3, 4, 5, 6, 7],
-//             }
-//         };
-//         let ctx = TransactionContext {
-//             namespace_id,
-//             channel_id: channel_id.clone(),
-//             is_init: false,
-//         };
-//         let req = ChaincodeMessage {
-//             r#type: ChaincodeMsgType::Transaction as i32,
-//             payload: cmd.payload,
-//             txid: tx_id,
-//             channel_id,
-//             proposal: Some(signed_proposal.get_protos_proposal()),
-//             ..Default::default()
-//         };
-//         self.contexts.insert(ctx_id(&req), ctx);
-//         self.cc_side.send(req).await.unwrap();
-
-//         Ok(())
-//     }
-// }
 
 fn ctx_id(msg: &ChaincodeMessage) -> String {
     let channel_id = &msg.channel_id;

@@ -4,6 +4,7 @@ mod ledger;
 mod server;
 
 use crate::protos::ChaincodeMessage;
+use futures::channel::oneshot::Sender;
 use prost::Message;
 pub use server::ChaincodeSupportService;
 
@@ -14,14 +15,25 @@ pub enum Task {
 }
 
 #[derive(Debug)]
+pub struct TransactionResult {
+    pub msg: String,
+    pub result: String,
+}
+
+#[derive(Debug)]
 pub struct ExecutorCommand {
     tx_hash: Vec<u8>,
     payload: Vec<u8>,
+    notifier: Sender<TransactionResult>,
 }
 
 impl ExecutorCommand {
-    pub fn new(tx_hash: Vec<u8>, payload: Vec<u8>) -> Self {
-        Self { tx_hash, payload }
+    pub fn new(tx_hash: Vec<u8>, payload: Vec<u8>, notifier: Sender<TransactionResult>) -> Self {
+        Self {
+            tx_hash,
+            payload,
+            notifier,
+        }
     }
 }
 

@@ -1,34 +1,34 @@
-use cita_cloud_proto::blockchain::CompactBlock;
-use cita_cloud_proto::common::Hash;
-use cita_cloud_proto::executor::{
-    executor_service_server::ExecutorService, CallRequest, CallResponse,
-};
-// use cita_cloud_proto::storage::{storage_service_client::StorageServiceClient, Content, ExtKey};
+use log::info;
 use parking_lot::RwLock;
+use prost::Message;
+use std::path::Path;
 use std::sync::Arc;
+use tokio::fs;
 use tonic::{Request, Response, Status};
 
-use crate::chaincode::ExecutorCommand;
-use crate::chaincode::Task;
 use futures::channel::mpsc;
+use futures::channel::oneshot;
 use futures::SinkExt;
 use std::collections::HashMap;
 use std::net::SocketAddr;
 
+use crate::chaincode::ChaincodeSupportService;
+use crate::chaincode::ExecutorCommand;
+use crate::chaincode::Task;
+use crate::chaincode::TransactionResult;
+
 use crate::protos::chaincode_support_server::ChaincodeSupportServer;
+
+use cita_cloud_proto::blockchain::CompactBlock;
+use cita_cloud_proto::common::Hash;
 use cita_cloud_proto::controller::raw_transaction::Tx;
 use cita_cloud_proto::controller::RawTransaction;
 use cita_cloud_proto::executor::executor_service_server::ExecutorServiceServer;
-use prost::Message;
+use cita_cloud_proto::executor::{
+    executor_service_server::ExecutorService, CallRequest, CallResponse,
+};
 
 use tonic::transport::Server;
-
-use crate::chaincode::ChaincodeSupportService;
-
-use log::info;
-
-use std::path::Path;
-use tokio::fs;
 
 pub struct ExecutorServer {
     cc_handles: Arc<RwLock<HashMap<String, mpsc::Sender<Task>>>>,
@@ -47,8 +47,6 @@ impl ExecutorService for ExecutorServer {
 
         if let Some(body) = block.body {
             for tx_hash in body.tx_hashes {
-                info!("tx_hash: {:?}", &tx_hash);
-
                 let filename = hex::encode(&tx_hash);
                 let root_path = Path::new(".");
                 let tx_path = root_path.join("txs").join(filename);
@@ -60,9 +58,15 @@ impl ExecutorService for ExecutorServer {
                         if let Some(tx) = utx.transaction {
                             // For now, there is only one chaincode.
                             let mut h = self.cc_handles.read().values().next().unwrap().clone();
-                            h.send(Task::Executor(ExecutorCommand::new(tx_hash, tx.data)))
-                                .await
-                                .unwrap();
+                            let (notifer, waiter) = oneshot::channel();
+                            h.send(Task::Executor(ExecutorCommand::new(
+                                tx_hash, tx.data, notifer,
+                            )))
+                            .await
+                            .unwrap();
+                            let TransactionResult { msg, result } = waiter.await.unwrap();
+                            info!("tx completed:\n  msg: `{}`\n  result: `{}`", msg, result);
+                            println!("tx completed:\n  msg: `{}`\n  result: `{}`", msg, result);
                         } else {
                             info!("block contains normal tx, but is empty");
                         }
@@ -219,7 +223,7 @@ mod tests {
                 r#type: ChaincodeMsgType::Transaction as i32,
                 payload: input,
                 txid: self.tx_id.clone(),
-                channel_id: self.tx_id.clone(),
+                channel_id: self.channel_id.clone(),
                 proposal: Some(signed_proposal),
                 ..Default::default()
             }

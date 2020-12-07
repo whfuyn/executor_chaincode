@@ -23,3 +23,7 @@ Build your chaincode and run it after the executor started.
 
 There is a [cli](https://github.com/cita-cloud/chaincode_cli) for sending transactions.
 
+## build docker image
+```
+docker build -t citacloud/executor_chaincode .
+```

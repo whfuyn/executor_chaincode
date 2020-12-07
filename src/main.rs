@@ -20,7 +20,7 @@ const GIT_VERSION: &str = git_version!(
     args = ["--tags", "--always", "--dirty=-modified"],
     fallback = "unknown"
 );
-const GIT_HOMEPAGE: &str = "https://github.com/cita-cloud/executor_poc";
+const GIT_HOMEPAGE: &str = "https://github.com/cita-cloud/executor_chaincode";
 
 /// network service
 #[derive(Clap)]

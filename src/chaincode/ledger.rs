@@ -1,25 +1,212 @@
 use super::get_timestamp;
+use crate::chaincode::MessageDump;
 use crate::protos::StateMetadata;
 use crate::queryresult::KeyModification;
 use crate::queryresult::Kv;
 use crypto::digest::Digest;
 use crypto::sha2::Sha256;
+use prost::Message;
+use serde::de::DeserializeOwned;
 use std::collections::BTreeMap;
 use std::collections::HashMap;
+use std::io::SeekFrom;
+use std::path::Path;
+use tokio::fs;
+use tokio::fs::File;
+use tokio::fs::OpenOptions;
+use tokio::io::AsyncReadExt;
+use tokio::io::AsyncWriteExt;
 
-#[derive(Debug, Default)]
+const STATE_FILE_NAME: &str = "ledger/state.data";
+const STATE_METADATA_FILE_NAME: &str = "ledger/state_metadata.data";
+const STATE_HISTORY_FILE_NAME: &str = "ledger/state_history.data";
+
+const PRIVATE_FILE_NAME: &str = "ledger/private.data";
+const PRIVATE_HASH_FILE_NAME: &str = "ledger/private_hash.data";
+const PRIVATE_DATA_METADATA_FILE_NAME: &str = "ledger/private_data_metadata.data";
+
+#[derive(Debug)]
 pub struct Ledger {
     state_store: BTreeMap<String, Vec<u8>>,
     state_metadata_store: BTreeMap<String, HashMap<String, Vec<u8>>>,
-    state_history: HashMap<String, Vec<KeyModification>>,
+    state_history: HashMap<String, Vec<Vec<u8>>>,
+
     private_store: BTreeMap<String, Vec<u8>>,
     private_hash_store: BTreeMap<String, Vec<u8>>,
-    private_metadata_store: BTreeMap<String, HashMap<String, Vec<u8>>>,
+    private_data_metadata_store: BTreeMap<String, HashMap<String, Vec<u8>>>,
+
+    // files
+    state_file: File,
+    state_metadata_file: File,
+    state_history_file: File,
+
+    private_file: File,
+    private_hash_file: File,
+    private_data_metadata_file: File,
 }
 
 impl Ledger {
-    pub fn new() -> Self {
-        Self::default()
+    // For now, this is only used by test
+    #[cfg(test)]
+    pub async fn new() -> Self {
+        Self::open(true).await
+    }
+
+    pub async fn load() -> Self {
+        Self::open(false).await
+    }
+
+    async fn open(truncate: bool) -> Self {
+        let data_dir = Path::new("ledger");
+        if !data_dir.exists() {
+            fs::create_dir(data_dir).await.unwrap();
+        }
+        let (state_store, state_file) = Self::load_state(truncate).await;
+        let (state_metadata_store, state_metadata_file) = Self::load_state_metadata(truncate).await;
+        let (state_history, state_history_file) = Self::load_state_history(truncate).await;
+
+        let (private_store, private_file) = Self::load_private(truncate).await;
+        let (private_hash_store, private_hash_file) = Self::load_private_hash(truncate).await;
+        let (private_data_metadata_store, private_data_metadata_file) =
+            Self::load_private_data_metadata(truncate).await;
+
+        Self {
+            state_store,
+            state_metadata_store,
+            state_history,
+
+            private_store,
+            private_hash_store,
+            private_data_metadata_store,
+
+            state_file,
+            state_metadata_file,
+            state_history_file,
+
+            private_file,
+            private_hash_file,
+            private_data_metadata_file,
+        }
+    }
+
+    async fn load_file<T, P>(path: P, truncate: bool) -> (T, File)
+    where
+        T: Default + DeserializeOwned,
+        P: AsRef<Path>,
+    {
+        let mut f = OpenOptions::new()
+            .create(true)
+            .read(true)
+            .write(true)
+            .truncate(truncate)
+            .open(path)
+            .await
+            .expect("open ledger file error");
+        let mut buf = vec![];
+        f.read_to_end(&mut buf).await.expect("read file failed");
+        if buf.is_empty() {
+            (T::default(), f)
+        } else {
+            (
+                bincode::deserialize(&buf[..]).expect("deserialize failed"),
+                f,
+            )
+        }
+    }
+
+    async fn sync_state(&mut self) {
+        let encoded = bincode::serialize(&self.state_store).expect("serialize failed");
+        self.state_file.seek(SeekFrom::Start(0)).await.unwrap();
+        self.state_file.write_all(&encoded[..]).await.unwrap();
+        self.state_file.sync_data().await.unwrap();
+    }
+
+    async fn sync_state_metadata(&mut self) {
+        let encoded = bincode::serialize(&self.state_metadata_store).expect("serialize failed");
+        self.state_metadata_file
+            .seek(SeekFrom::Start(0))
+            .await
+            .unwrap();
+        self.state_metadata_file
+            .write_all(&encoded[..])
+            .await
+            .unwrap();
+        self.state_metadata_file.sync_data().await.unwrap();
+    }
+
+    async fn sync_state_history(&mut self) {
+        let encoded = bincode::serialize(&self.state_history).expect("serialize failed");
+        self.state_history_file
+            .seek(SeekFrom::Start(0))
+            .await
+            .unwrap();
+        self.state_history_file
+            .write_all(&encoded[..])
+            .await
+            .unwrap();
+        self.state_history_file.sync_data().await.unwrap();
+    }
+
+    async fn sync_private(&mut self) {
+        let encoded = bincode::serialize(&self.private_store).expect("serialize failed");
+        self.private_file.seek(SeekFrom::Start(0)).await.unwrap();
+        self.private_file.write_all(&encoded[..]).await.unwrap();
+        self.private_file.sync_data().await.unwrap();
+    }
+
+    async fn sync_private_hash(&mut self) {
+        let encoded = bincode::serialize(&self.private_hash_store).expect("serialize failed");
+        self.private_hash_file
+            .seek(SeekFrom::Start(0))
+            .await
+            .unwrap();
+        self.private_hash_file
+            .write_all(&encoded[..])
+            .await
+            .unwrap();
+        self.private_hash_file.sync_data().await.unwrap();
+    }
+
+    async fn sync_private_data_metadata(&mut self) {
+        let encoded =
+            bincode::serialize(&self.private_data_metadata_store).expect("serialize failed");
+        self.private_data_metadata_file
+            .seek(SeekFrom::Start(0))
+            .await
+            .unwrap();
+        self.private_data_metadata_file
+            .write_all(&encoded[..])
+            .await
+            .unwrap();
+        self.private_data_metadata_file.sync_data().await.unwrap();
+    }
+
+    async fn load_state(truncate: bool) -> (BTreeMap<String, Vec<u8>>, File) {
+        Self::load_file(STATE_FILE_NAME, truncate).await
+    }
+
+    async fn load_state_metadata(
+        truncate: bool,
+    ) -> (BTreeMap<String, HashMap<String, Vec<u8>>>, File) {
+        Self::load_file(STATE_METADATA_FILE_NAME, truncate).await
+    }
+
+    async fn load_state_history(truncate: bool) -> (HashMap<String, Vec<Vec<u8>>>, File) {
+        Self::load_file(STATE_HISTORY_FILE_NAME, truncate).await
+    }
+
+    async fn load_private(truncate: bool) -> (BTreeMap<String, Vec<u8>>, File) {
+        Self::load_file(PRIVATE_FILE_NAME, truncate).await
+    }
+
+    async fn load_private_hash(truncate: bool) -> (BTreeMap<String, Vec<u8>>, File) {
+        Self::load_file(PRIVATE_HASH_FILE_NAME, truncate).await
+    }
+
+    async fn load_private_data_metadata(
+        truncate: bool,
+    ) -> (BTreeMap<String, HashMap<String, Vec<u8>>>, File) {
+        Self::load_file(PRIVATE_DATA_METADATA_FILE_NAME, truncate).await
     }
 
     pub fn get_state(&self, namespace: &str, key: &str) -> Option<&Vec<u8>> {
@@ -72,7 +259,7 @@ impl Ledger {
                 .map(|h| h.iter())
                 .into_iter()
                 .flatten()
-                .cloned(),
+                .map(|h| KeyModification::decode(&h[..]).unwrap()),
         )
     }
 
@@ -103,7 +290,7 @@ impl Ledger {
         key: &str,
     ) -> Option<&HashMap<String, Vec<u8>>> {
         let private_data_key = make_collection_key(&namespace, collection, key);
-        self.private_metadata_store.get(&private_data_key)
+        self.private_data_metadata_store.get(&private_data_key)
     }
 
     pub fn get_private_data_by_range<'this: 'ret, 'ret>(
@@ -131,28 +318,39 @@ impl Ledger {
         }))
     }
 
-    pub fn set_state(&mut self, namespace: &str, tx_id: &str, key: &str, value: Vec<u8>) {
+    pub async fn set_state(&mut self, namespace: &str, tx_id: &str, key: &str, value: Vec<u8>) {
         let state_key = make_key(namespace, key);
         self.state_store.insert(state_key.clone(), value.clone());
+        self.sync_state().await;
         let km = KeyModification {
             tx_id: tx_id.to_owned(),
             value,
             timestamp: get_timestamp(),
             is_delete: false,
         };
-        self.state_history.entry(state_key).or_default().push(km);
+        self.state_history
+            .entry(state_key)
+            .or_default()
+            .push(km.dump());
+        self.sync_state_history().await;
     }
 
-    pub fn set_state_metadata(&mut self, namespace: &str, key: &str, metadata: StateMetadata) {
+    pub async fn set_state_metadata(
+        &mut self,
+        namespace: &str,
+        key: &str,
+        metadata: StateMetadata,
+    ) {
         let state_key = make_key(namespace, key);
         let StateMetadata { metakey, value } = metadata;
         self.state_metadata_store
             .entry(state_key)
             .or_default()
             .insert(metakey, value);
+        self.sync_state_metadata().await;
     }
 
-    pub fn set_private_data(
+    pub async fn set_private_data(
         &mut self,
         namespace: &str,
         collection: &str,
@@ -162,11 +360,13 @@ impl Ledger {
         let private_data_key = make_collection_key(namespace, collection, key);
         self.private_store
             .insert(private_data_key.clone(), value.clone());
+        self.sync_private().await;
         let hash = compute_private_data_hash(&value[..]);
         self.private_hash_store.insert(private_data_key, hash);
+        self.sync_private_hash().await;
     }
 
-    pub fn set_private_data_metadata(
+    pub async fn set_private_data_metadata(
         &mut self,
         namespace: &str,
         collection: &str,
@@ -175,30 +375,39 @@ impl Ledger {
     ) {
         let private_data_key = make_collection_key(namespace, collection, key);
         let StateMetadata { metakey, value } = metadata;
-        self.private_metadata_store
+        self.private_data_metadata_store
             .entry(private_data_key)
             .or_default()
             .insert(metakey, value);
+        self.sync_private_data_metadata().await;
     }
 
     // TODO: maybe delete other related data?
-    pub fn delete_state(&mut self, namespace: &str, tx_id: &str, key: &str) {
+    pub async fn delete_state(&mut self, namespace: &str, tx_id: &str, key: &str) {
         let state_key = make_key(namespace, key);
         self.state_store.remove(&state_key);
+        self.sync_state().await;
         let km = KeyModification {
             tx_id: tx_id.to_owned(),
             value: vec![],
             timestamp: get_timestamp(),
             is_delete: true,
         };
-        self.state_history.entry(state_key).or_default().push(km);
+        self.state_history
+            .entry(state_key)
+            .or_default()
+            .push(km.dump());
+        self.sync_state_history().await;
     }
 
-    pub fn delete_private_data(&mut self, namespace: &str, collection: &str, key: &str) {
+    pub async fn delete_private_data(&mut self, namespace: &str, collection: &str, key: &str) {
         let private_data_key = make_collection_key(namespace, collection, key);
         self.private_store.remove(&private_data_key);
-        self.private_metadata_store.remove(&private_data_key);
+        self.sync_private().await;
+        self.private_data_metadata_store.remove(&private_data_key);
+        self.sync_private_data_metadata().await;
         self.private_hash_store.remove(&private_data_key);
+        self.sync_private_hash().await;
     }
 }
 
@@ -262,20 +471,20 @@ mod tests {
         assert_eq!(compute_private_data_hash(data.as_bytes()), expect.to_vec());
     }
 
-    #[test]
-    fn test_get_set_state() {
-        let mut ledger = Ledger::new();
+    #[tokio::test]
+    async fn test_get_set_state() {
+        let mut ledger = Ledger::new().await;
         let namespace = "namespace";
         let tx_id = "123";
         let key = "key";
         let value = "value".as_bytes().to_vec();
-        ledger.set_state(namespace, tx_id, key, value.clone());
+        ledger.set_state(namespace, tx_id, key, value.clone()).await;
         assert_eq!(ledger.get_state(namespace, key), Some(&value));
     }
 
-    #[test]
-    fn test_get_set_metadata() {
-        let mut ledger = Ledger::new();
+    #[tokio::test]
+    async fn test_get_set_metadata() {
+        let mut ledger = Ledger::new().await;
         let namespace = "namespace";
         let key = "key";
         let metakey = "metakey".to_string();
@@ -284,7 +493,7 @@ mod tests {
             metakey: metakey.clone(),
             value: value.clone(),
         };
-        ledger.set_state_metadata(namespace, key, metadata);
+        ledger.set_state_metadata(namespace, key, metadata).await;
         let expect = {
             let mut meta_map = HashMap::new();
             meta_map.insert(metakey, value);
@@ -293,23 +502,25 @@ mod tests {
         assert_eq!(ledger.get_state_metadata(namespace, key), Some(&expect));
     }
 
-    #[test]
-    fn test_get_set_private_data() {
-        let mut ledger = Ledger::new();
+    #[tokio::test]
+    async fn test_get_set_private_data() {
+        let mut ledger = Ledger::new().await;
         let namespace = "namespace";
         let collection = "collection";
         let key = "key";
         let value = "value".as_bytes().to_vec();
-        ledger.set_private_data(namespace, collection, key, value.clone());
+        ledger
+            .set_private_data(namespace, collection, key, value.clone())
+            .await;
         assert_eq!(
             ledger.get_private_data(namespace, collection, key),
             Some(&value)
         );
     }
 
-    #[test]
-    fn test_get_set_private_data_metadata() {
-        let mut ledger = Ledger::new();
+    #[tokio::test]
+    async fn test_get_set_private_data_metadata() {
+        let mut ledger = Ledger::new().await;
         let namespace = "namespace";
         let collection = "collection";
         let key = "key";
@@ -319,7 +530,9 @@ mod tests {
             metakey: metakey.clone(),
             value: value.clone(),
         };
-        ledger.set_private_data_metadata(namespace, collection, key, metadata);
+        ledger
+            .set_private_data_metadata(namespace, collection, key, metadata)
+            .await;
         let expect = {
             let mut meta_map = HashMap::new();
             meta_map.insert(metakey, value);
@@ -331,14 +544,16 @@ mod tests {
         );
     }
 
-    #[test]
-    fn test_get_private_data_hash() {
-        let mut ledger = Ledger::new();
+    #[tokio::test]
+    async fn test_get_private_data_hash() {
+        let mut ledger = Ledger::new().await;
         let namespace = "namespace";
         let collection = "collection";
         let key = "key";
         let value = "value".as_bytes().to_vec();
-        ledger.set_private_data(namespace, collection, key, value.clone());
+        ledger
+            .set_private_data(namespace, collection, key, value.clone())
+            .await;
         let expect = compute_private_data_hash(&value[..]);
         assert_eq!(
             ledger.get_private_data_hash(namespace, collection, key),
@@ -346,16 +561,18 @@ mod tests {
         );
     }
 
-    #[test]
-    fn test_get_state_by_range() {
-        let mut ledger = Ledger::new();
+    #[tokio::test]
+    async fn test_get_state_by_range() {
+        let mut ledger = Ledger::new().await;
         let mut expect = vec![];
         let namespace = "namespace".to_string();
         for i in 0..10 {
             let tx_id = format!("123{}", i);
             let key = format!("key{}", i);
             let value = format!("value{}", i).as_bytes().to_vec();
-            ledger.set_state(&namespace, &tx_id, &key, value.clone());
+            ledger
+                .set_state(&namespace, &tx_id, &key, value.clone())
+                .await;
             expect.push(Kv {
                 namespace: namespace.clone(),
                 key,
@@ -394,16 +611,18 @@ mod tests {
         );
     }
 
-    #[test]
-    fn test_get_private_data_by_range() {
-        let mut ledger = Ledger::new();
+    #[tokio::test]
+    async fn test_get_private_data_by_range() {
+        let mut ledger = Ledger::new().await;
         let mut expect = vec![];
         let namespace = "namespace".to_string();
         let collection = "collection".to_string();
         for i in 0..10 {
             let key = format!("key{}", i);
             let value = format!("value{}", i).as_bytes().to_vec();
-            ledger.set_private_data(&namespace, &collection, &key, value.clone());
+            ledger
+                .set_private_data(&namespace, &collection, &key, value.clone())
+                .await;
             expect.push(Kv {
                 namespace: namespace.clone(),
                 key,
@@ -442,16 +661,18 @@ mod tests {
         );
     }
 
-    #[test]
-    fn test_get_history_for_key() {
-        let mut ledger = Ledger::new();
+    #[tokio::test]
+    async fn test_get_history_for_key() {
+        let mut ledger = Ledger::new().await;
         let namespace = "namespace";
         let key = "key";
         let mut expect = vec![];
         for i in 0..10 {
             let tx_id = format!("123{}", i);
             let value = format!("value{}", i).as_bytes().to_vec();
-            ledger.set_state(namespace, &tx_id, key, value.clone());
+            ledger
+                .set_state(namespace, &tx_id, key, value.clone())
+                .await;
             expect.push(KeyModification {
                 tx_id,
                 value,
@@ -460,7 +681,7 @@ mod tests {
             });
         }
         let tx_id = "666".to_string();
-        ledger.delete_state(namespace, &tx_id, key);
+        ledger.delete_state(namespace, &tx_id, key).await;
         expect.push(KeyModification {
             tx_id,
             value: vec![],
@@ -470,7 +691,9 @@ mod tests {
 
         let tx_id = "667".to_string();
         let value = "value667".as_bytes().to_vec();
-        ledger.set_state(namespace, &tx_id, key, value.clone());
+        ledger
+            .set_state(namespace, &tx_id, key, value.clone())
+            .await;
         expect.push(KeyModification {
             tx_id,
             value,
@@ -484,32 +707,34 @@ mod tests {
         }));
     }
 
-    #[test]
-    fn test_delete_state() {
-        let mut ledger = Ledger::new();
+    #[tokio::test]
+    async fn test_delete_state() {
+        let mut ledger = Ledger::new().await;
         let namespace = "namespace";
         let key = "key";
         let tx_id = "123";
         let value = "value".as_bytes().to_vec();
-        ledger.set_state(namespace, tx_id, key, value.clone());
+        ledger.set_state(namespace, tx_id, key, value.clone()).await;
         assert_eq!(ledger.get_state(namespace, key), Some(&value));
-        ledger.delete_state(namespace, tx_id, key);
+        ledger.delete_state(namespace, tx_id, key).await;
         assert_eq!(ledger.get_state(&namespace, key), None);
     }
 
-    #[test]
-    fn test_delete_private_data() {
-        let mut ledger = Ledger::new();
+    #[tokio::test]
+    async fn test_delete_private_data() {
+        let mut ledger = Ledger::new().await;
         let namespace = "namespace";
         let collection = "collection";
         let key = "key";
         let value = "value".as_bytes().to_vec();
-        ledger.set_private_data(namespace, collection, key, value.clone());
+        ledger
+            .set_private_data(namespace, collection, key, value.clone())
+            .await;
         assert_eq!(
             ledger.get_private_data(namespace, collection, key),
             Some(&value)
         );
-        ledger.delete_private_data(namespace, collection, key);
+        ledger.delete_private_data(namespace, collection, key).await;
         assert_eq!(ledger.get_private_data(namespace, collection, key), None);
     }
 }

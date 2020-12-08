@@ -76,7 +76,7 @@ impl Handler {
                 let mut handler = Self {
                     cc_name: cc_name.clone(),
                     cc_side,
-                    ledger: Ledger::new(),
+                    ledger: Ledger::load().await,
                     contexts: HashMap::new(),
                     total_query_limit: 65536, // TODO: support pagination
                     nonce: 0,
@@ -86,7 +86,7 @@ impl Handler {
                     let cc_stream = cc_stream.filter_map(|res| match res {
                         Ok(msg) => future::ready(Some(Task::Chaincode(msg))),
                         Err(e) => {
-                            info!("Chaincode stream error: `{:?}`", e);
+                            warn!("Chaincode stream error: `{:?}`", e);
                             panic!("chaincode is down")
                         }
                     });
@@ -338,10 +338,12 @@ impl Handler {
             }
             // TODO: check permission
             self.ledger
-                .set_private_data(namespace_id, collection, &put_state.key, put_state.value);
+                .set_private_data(namespace_id, collection, &put_state.key, put_state.value)
+                .await;
         } else {
             self.ledger
-                .set_state(namespace_id, &msg.txid, &put_state.key, put_state.value);
+                .set_state(namespace_id, &msg.txid, &put_state.key, put_state.value)
+                .await;
         }
 
         let resp = ChaincodeMessage {
@@ -375,15 +377,18 @@ impl Handler {
                 ));
             }
             // TODO: check permission
-            self.ledger.set_private_data_metadata(
-                namespace_id,
-                collection,
-                &put_state_metadata.key,
-                metadata,
-            );
+            self.ledger
+                .set_private_data_metadata(
+                    namespace_id,
+                    collection,
+                    &put_state_metadata.key,
+                    metadata,
+                )
+                .await;
         } else {
             self.ledger
-                .set_state_metadata(namespace_id, &put_state_metadata.key, metadata);
+                .set_state_metadata(namespace_id, &put_state_metadata.key, metadata)
+                .await;
         }
         let resp = ChaincodeMessage {
             r#type: ChaincodeMsgType::Response as i32,
@@ -408,10 +413,12 @@ impl Handler {
             }
             // TODO: check permission
             self.ledger
-                .delete_private_data(namespace_id, collection, &del_state.key);
+                .delete_private_data(namespace_id, collection, &del_state.key)
+                .await;
         } else {
             self.ledger
-                .delete_state(namespace_id, &msg.txid, &del_state.key);
+                .delete_state(namespace_id, &msg.txid, &del_state.key)
+                .await;
         }
         let resp = ChaincodeMessage {
             r#type: ChaincodeMsgType::Response as i32,

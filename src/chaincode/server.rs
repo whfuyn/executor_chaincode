@@ -44,10 +44,7 @@ impl ChaincodeSupport for ChaincodeSupportService {
             mut resp_rx,
         } = Handler::register(cc_stream).await.unwrap();
 
-        self.cc_handles
-            .write()
-            .await
-            .insert(name, handle);
+        self.cc_handles.write().await.insert(name, handle);
 
         let output = async_stream::try_stream! {
             while let Some(msg) = resp_rx.next().await {

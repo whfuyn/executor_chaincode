@@ -59,7 +59,14 @@ impl ExecutorService for ExecutorServer {
                             let (notifer, waiter) = oneshot::channel();
                             // For now, there is only one chaincode.
                             {
-                                let mut h = self.cc_handles.read().await.values().next().unwrap().clone();
+                                let mut h = self
+                                    .cc_handles
+                                    .read()
+                                    .await
+                                    .values()
+                                    .next()
+                                    .unwrap()
+                                    .clone();
                                 h.send(Task::Executor(ExecutorCommand::new(
                                     tx_hash, tx.data, notifer,
                                 )))
@@ -133,10 +140,6 @@ mod tests {
     use crate::protos;
     use crate::protos::chaincode_message::Type as ChaincodeMsgType;
     use crate::protos::ChaincodeMessage;
-    use std::time::Duration;
-    use tokio::time;
-    // use crate::protos::ChaincodeInput;
-    // use cita_cloud_proto::blockchain::CompactBlock;
 
     const EXECUTOR_ADDR: &'static str = "127.0.0.1:50003";
     const CHAINCODE_LISTEN_ADDR: &'static str = "127.0.0.1:7052";
@@ -391,28 +394,29 @@ Jfn1p8cfo4BPd3tSllZEIbXE2uCMkKE4LGmo
     }
 
     async fn exec_txs(txs: Vec<TestTransaction>) {
-        let mut ticker = time::interval(Duration::from_secs(2));
-        ticker.tick().await;
-
+        use std::time::Duration;
+        use tokio::time::delay_for;
         let executor = run_executor();
-        ticker.tick().await;
         let mut sender = executor
             .cc_handles
             .read()
+            .await
             .values()
             .next()
             .expect("no chaincode registered")
             .clone();
+        delay_for(Duration::from_secs(5)).await;
         for tx in txs {
-            ticker.tick().await;
+            let (notifier, waiter) = futures::channel::oneshot::channel();
             sender
                 .send(Task::Executor(ExecutorCommand::new(
                     tx.tx_id.as_bytes().to_vec(),
                     tx.dump(),
+                    notifier,
                 )))
                 .await
                 .unwrap();
+            waiter.await.unwrap();
         }
-        ticker.tick().await;
     }
 }

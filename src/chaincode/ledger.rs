@@ -22,13 +22,13 @@ impl Ledger {
         Self::default()
     }
 
-    pub fn get_state(&mut self, namespace: &str, key: &str) -> Option<&Vec<u8>> {
+    pub fn get_state(&self, namespace: &str, key: &str) -> Option<&Vec<u8>> {
         let state_key = make_key(namespace, key);
         self.state_store.get(&state_key)
     }
 
     pub fn get_state_metadata(
-        &mut self,
+        &self,
         namespace: &str,
         key: &str,
     ) -> Option<&HashMap<String, Vec<u8>>> {
@@ -77,7 +77,7 @@ impl Ledger {
     }
 
     pub fn get_private_data(
-        &mut self,
+        &self,
         namespace: &str,
         collection: &str,
         key: &str,
@@ -87,7 +87,7 @@ impl Ledger {
     }
 
     pub fn get_private_data_hash(
-        &mut self,
+        &self,
         namespace: &str,
         collection: &str,
         key: &str,

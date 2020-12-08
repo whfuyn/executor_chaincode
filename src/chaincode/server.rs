@@ -8,7 +8,7 @@ use futures::channel::mpsc;
 use futures::stream::Stream;
 use futures::stream::StreamExt;
 
-use parking_lot::RwLock;
+use tokio::sync::RwLock;
 
 use crate::protos::chaincode_support_server::ChaincodeSupport;
 use crate::protos::ChaincodeMessage;
@@ -44,7 +44,10 @@ impl ChaincodeSupport for ChaincodeSupportService {
             mut resp_rx,
         } = Handler::register(cc_stream).await.unwrap();
 
-        self.cc_handles.write().insert(name, handle);
+        self.cc_handles
+            .write()
+            .await
+            .insert(name, handle);
 
         let output = async_stream::try_stream! {
             while let Some(msg) = resp_rx.next().await {

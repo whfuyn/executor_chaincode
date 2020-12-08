@@ -1,9 +1,9 @@
 use log::info;
-use parking_lot::RwLock;
 use prost::Message;
 use std::path::Path;
 use std::sync::Arc;
 use tokio::fs;
+use tokio::sync::RwLock;
 use tonic::{Request, Response, Status};
 
 use futures::channel::mpsc;
@@ -56,14 +56,16 @@ impl ExecutorService for ExecutorServer {
                 match raw_tx.tx {
                     Some(Tx::NormalTx(utx)) => {
                         if let Some(tx) = utx.transaction {
-                            // For now, there is only one chaincode.
-                            let mut h = self.cc_handles.read().values().next().unwrap().clone();
                             let (notifer, waiter) = oneshot::channel();
-                            h.send(Task::Executor(ExecutorCommand::new(
-                                tx_hash, tx.data, notifer,
-                            )))
-                            .await
-                            .unwrap();
+                            // For now, there is only one chaincode.
+                            {
+                                let mut h = self.cc_handles.read().await.values().next().unwrap().clone();
+                                h.send(Task::Executor(ExecutorCommand::new(
+                                    tx_hash, tx.data, notifer,
+                                )))
+                                .await
+                                .unwrap();
+                            }
                             let TransactionResult { msg, result } = waiter.await.unwrap();
                             info!("tx completed:\n  msg: `{}`\n  result: `{}`", msg, result);
                             println!("tx completed:\n  msg: `{}`\n  result: `{}`", msg, result);

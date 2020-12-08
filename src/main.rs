@@ -91,9 +91,9 @@ mod queryresult {
 }
 
 use executor::ChaincodeExecutor;
-use parking_lot::RwLock;
 use std::collections::HashMap;
 use std::sync::Arc;
+use tokio::sync::RwLock;
 
 #[tokio::main]
 async fn run(opts: RunOpts) -> Result<(), Box<dyn std::error::Error>> {

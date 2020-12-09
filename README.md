@@ -63,7 +63,7 @@ ChaincodeMessage {
 }
 ```
 
-I wrote a [tool](https://github.com/cita-cloud/chaincode_cli) for building and sending this kind of transaction.
+I wrote a [tool](https://github.com/cita-cloud/chaincode_invoker) for building and sending this kind of transaction.
 
 
 ## Build docker image

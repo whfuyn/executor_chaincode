@@ -1,4 +1,7 @@
 # executor_chaincode
+
+[![Build Status](https://travis-ci.org/cita-cloud/executor_chaincode.svg?branch=main)](https://travis-ci.org/cita-cloud/executor_chaincode)
+
 `executor_chaincode` is an implementation of CITA-Cloud's executor. 
 
 It's compatible with fabric's chaincode with some limitations.

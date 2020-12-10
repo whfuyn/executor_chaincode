@@ -44,11 +44,13 @@ You may check `./examples` to see some chaincodes examples from `fabric-samples`
 
 ### 3. Send transaction
 
-Transactions in a finalized block will be executed by sending its data directly to the chaincode.
+Transaction data is the concat of `chaincode_name.len().to_be_bytes()` `chaincode_name` `payload`.
+
+Transactions in a finalized block will be executed by sending its payload to the chaincode indicated by `chaincode_name`.
 
 The chaincode, as a standalone server, expect a `ChaincodeMessage` defined in `fabric-protos/peer/chaincode_shim.proto`
 
-And the detailed structure of the `ChaincodeMessage` is complicated. Here is a rust code snippet to show you how it looks like:
+The detail format of the `ChaincodeMessage` is complicated, but its basic structure is:
 
 ```rust
 ChaincodeMessage {

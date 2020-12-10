@@ -347,6 +347,7 @@ Jfn1p8cfo4BPd3tSllZEIbXE2uCMkKE4LGmo
     }
 
     #[tokio::test]
+    #[ignore] // this test requires chaincode setup
     async fn test_asset_transfer_basic() {
         let (mut org, _) = default_orgs();
 
@@ -364,6 +365,7 @@ Jfn1p8cfo4BPd3tSllZEIbXE2uCMkKE4LGmo
     }
 
     #[tokio::test]
+    #[ignore] // this test requires chaincode setup
     async fn test_asset_transfer_secured_agreement() {
         let (mut org1, mut org2) = default_orgs();
 

@@ -56,15 +56,17 @@ impl ExecutorService for ExecutorServer {
                 let root_path = Path::new(".");
                 let tx_path = root_path.join("txs").join(filename);
 
-                let mut tx_bytes = Bytes::from(fs::read(tx_path).await.unwrap());
-                let cc_name_len = tx_bytes.get_u64();
-                let cc_name =
-                    String::from_utf8_lossy(&tx_bytes.split_to(cc_name_len as usize)).to_string();
+                let tx_bytes = fs::read(tx_path).await.unwrap();
 
                 let raw_tx = RawTransaction::decode(&tx_bytes[..]).unwrap();
                 match raw_tx.tx {
                     Some(Tx::NormalTx(utx)) => {
                         if let Some(tx) = utx.transaction {
+                            let mut payload = Bytes::from(tx.data);
+                            let cc_name_len = payload.get_u64();
+                            let cc_name =
+                                String::from_utf8_lossy(&payload.split_to(cc_name_len as usize))
+                                    .to_string();
                             let (notifier, waiter) = oneshot::channel();
                             {
                                 let mut h = self
@@ -77,7 +79,7 @@ impl ExecutorService for ExecutorServer {
                                     })
                                     .clone();
                                 h.send(Task::Executor(ExecutorCommand::Execute {
-                                    payload: tx.data,
+                                    payload: payload.to_vec(),
                                     notifier,
                                 }))
                                 .await
@@ -422,7 +424,7 @@ Jfn1p8cfo4BPd3tSllZEIbXE2uCMkKE4LGmo
         for tx in txs {
             let (notifier, waiter) = futures::channel::oneshot::channel();
             sender
-                .send(Task::Executor(ExecutorCommand::Execute{
+                .send(Task::Executor(ExecutorCommand::Execute {
                     payload: tx.dump(),
                     notifier,
                 }))

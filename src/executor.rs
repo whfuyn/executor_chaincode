@@ -158,18 +158,18 @@ mod tests {
     use crate::protos::chaincode_message::Type as ChaincodeMsgType;
     use crate::protos::ChaincodeMessage;
 
-    const EXECUTOR_ADDR: &'static str = "127.0.0.1:50003";
-    const CHAINCODE_LISTEN_ADDR: &'static str = "127.0.0.1:7052";
-
-    fn run_executor() -> ChaincodeExecutor {
+    fn run_executor(
+        executor_addr: &'static str,
+        chaincode_listen_addr: &'static str,
+    ) -> ChaincodeExecutor {
         let cc_handles = Arc::new(RwLock::new(HashMap::new()));
         let mut cc_executor = ChaincodeExecutor::new(cc_handles);
         let cc_executor_cloned = cc_executor.clone();
         tokio::spawn(async move {
             cc_executor
                 .run(
-                    EXECUTOR_ADDR.parse().unwrap(),
-                    CHAINCODE_LISTEN_ADDR.parse().unwrap(),
+                    executor_addr.parse().unwrap(),
+                    chaincode_listen_addr.parse().unwrap(),
                 )
                 .await;
         });
@@ -301,8 +301,7 @@ mod tests {
         }
     }
 
-    #[tokio::test]
-    async fn test_asset_transfer_secured_agreement() {
+    fn default_orgs() -> (TestTransactionFactory, TestTransactionFactory) {
         let channel_id = "cita-cloud".to_string();
         // certs are from fabric-samples
         let org1_mspid = "Org1MSP".to_string();
@@ -337,13 +336,36 @@ AwIDRwAwRAIgXEKPv1tgXjum6aikVT3AJIjig1TF7KCojogDrZqu3lACIGdji2sX
 Jfn1p8cfo4BPd3tSllZEIbXE2uCMkKE4LGmo
 -----END CERTIFICATE-----";
 
-        let mut org1 = TestTransactionFactory::new(
+        let org1 = TestTransactionFactory::new(
             channel_id.clone(),
             org1_mspid,
             org1_cert.as_bytes().to_vec(),
         );
-        let mut org2 =
+        let org2 =
             TestTransactionFactory::new(channel_id, org2_mspid, org2_cert.as_bytes().to_vec());
+        (org1, org2)
+    }
+
+    #[tokio::test]
+    async fn test_asset_transfer_basic() {
+        let (mut org, _) = default_orgs();
+
+        let mut txs = vec![];
+        txs.push(org.build("InitLedger", &["asset8", "blue", "16", "Kelly", "750"], &[]));
+        txs.push(org.build("ReadAsset", &["asset8"], &[]));
+        txs.push(org.build("GetAllAssets", &[], &[]));
+        txs.push(org.build("TransferAsset", &["asset1", "Alice"], &[]));
+        txs.push(org.build("ReadAsset", &["asset1"], &[]));
+
+        let executor_addr = "127.0.0.1:50003";
+        let chaincode_listen_addr = "127.0.0.1:7052";
+        let executor = run_executor(executor_addr, chaincode_listen_addr);
+        exec_txs(executor, txs).await;
+    }
+
+    #[tokio::test]
+    async fn test_asset_transfer_secured_agreement() {
+        let (mut org1, mut org2) = default_orgs();
 
         let mut txs = vec![];
 
@@ -407,13 +429,15 @@ Jfn1p8cfo4BPd3tSllZEIbXE2uCMkKE4LGmo
         ));
         txs.push(org2.build("ReadAsset", &["asset1"], &[]));
 
-        exec_txs(txs).await;
+        let executor_addr = "127.0.0.1:51003";
+        let chaincode_listen_addr = "127.0.0.1:7152";
+        let executor = run_executor(executor_addr, chaincode_listen_addr);
+        exec_txs(executor, txs).await;
     }
 
-    async fn exec_txs(txs: Vec<TestTransaction>) {
+    async fn exec_txs(executor: ChaincodeExecutor, txs: Vec<TestTransaction>) {
         use std::time::Duration;
         use tokio::time::delay_for;
-        let executor = run_executor();
         delay_for(Duration::from_secs(5)).await;
         let mut sender = executor
             .cc_handles

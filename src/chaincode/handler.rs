@@ -7,6 +7,7 @@ use futures::{future, stream};
 use log::{info, warn};
 use prost::Message;
 use std::collections::HashMap;
+use std::path::Path;
 
 use super::error::Error;
 use super::error::Result;
@@ -76,10 +77,11 @@ impl Handler {
 
                 let (task_tx, task_rx) = mpsc::channel(64);
 
+                let data_dir = Path::new(LEDGER_DATA_DIR).join(&cc_name);
                 let mut handler = Self {
                     cc_name: cc_name.clone(),
                     cc_side,
-                    ledger: Ledger::load(LEDGER_DATA_DIR).await,
+                    ledger: Ledger::load(data_dir).await,
                     contexts: HashMap::new(),
                     total_query_limit: 65536, // TODO: support pagination
                     nonce: 0,

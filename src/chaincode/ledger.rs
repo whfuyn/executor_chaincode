@@ -59,7 +59,7 @@ impl Ledger {
     async fn open<P: AsRef<Path>>(data_dir: P, truncate: bool) -> Self {
         let path = data_dir.as_ref();
         if !path.exists() {
-            fs::create_dir(path).await.unwrap();
+            fs::create_dir_all(path).await.unwrap();
         }
         let (state_store, state_file) = Self::load_state(path, truncate).await;
         let (state_metadata_store, state_metadata_file) =

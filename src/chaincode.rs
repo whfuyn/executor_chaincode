@@ -1,12 +1,12 @@
 pub mod error;
 mod handler;
 mod ledger;
-mod server;
+mod support;
 
 use crate::protos::ChaincodeMessage;
 use futures::channel::oneshot::Sender;
 use prost::Message;
-pub use server::ChaincodeSupportService;
+pub use support::ChaincodeSupportService;
 
 #[derive(Debug)]
 pub enum Task {

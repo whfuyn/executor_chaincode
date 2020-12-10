@@ -15,8 +15,8 @@ use crate::protos::ChaincodeMessage;
 
 use super::Task;
 
+use super::handler::ChaincodeRegistry;
 use super::handler::Handler;
-use super::handler::Registry;
 
 pub struct ChaincodeSupportService {
     cc_handles: Arc<RwLock<HashMap<String, mpsc::Sender<Task>>>>,
@@ -38,7 +38,7 @@ impl ChaincodeSupport for ChaincodeSupportService {
         request: tonic::Request<tonic::Streaming<ChaincodeMessage>>,
     ) -> Result<tonic::Response<Self::RegisterStream>, tonic::Status> {
         let cc_stream = request.into_inner();
-        let Registry {
+        let ChaincodeRegistry {
             name,
             handle,
             mut resp_rx,

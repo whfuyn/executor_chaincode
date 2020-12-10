@@ -42,6 +42,17 @@ impl ExecutorServer {
     pub fn new(cc_handles: Arc<RwLock<HashMap<String, mpsc::Sender<Task>>>>) -> Self {
         Self { cc_handles }
     }
+
+    async fn send_task(&self, cc_name: &str, task: Task) {
+        let mut h = self
+            .cc_handles
+            .read()
+            .await
+            .get(cc_name)
+            .unwrap_or_else(|| panic!("chaincode `{}` is not registered", cc_name))
+            .clone();
+        h.send(task).await.unwrap();
+    }
 }
 
 #[tonic::async_trait]
@@ -68,23 +79,14 @@ impl ExecutorService for ExecutorServer {
                                 String::from_utf8_lossy(&payload.split_to(cc_name_len as usize))
                                     .to_string();
                             let (notifier, waiter) = oneshot::channel();
-                            {
-                                let mut h = self
-                                    .cc_handles
-                                    .read()
-                                    .await
-                                    .get(&cc_name)
-                                    .unwrap_or_else(|| {
-                                        panic!("chaincode `{}` is not registered", cc_name)
-                                    })
-                                    .clone();
-                                h.send(Task::Executor(ExecutorCommand::Execute {
+                            self.send_task(
+                                &cc_name,
+                                Task::Executor(ExecutorCommand::Execute {
                                     payload: payload.to_vec(),
                                     notifier,
-                                }))
-                                .await
-                                .unwrap();
-                            }
+                                }),
+                            )
+                            .await;
                             let TransactionResult { msg, result } = waiter.await.unwrap();
                             updated_cc.insert(cc_name.clone());
                             info!("tx completed:\n  msg: `{}`\n  result: `{}`", msg, result);
@@ -99,8 +101,8 @@ impl ExecutorService for ExecutorServer {
             }
         }
         for cc_name in updated_cc {
-            let mut h = self.cc_handles.read().await.get(&cc_name).unwrap().clone();
-            h.send(Task::Executor(ExecutorCommand::Sync)).await.unwrap();
+            self.send_task(&cc_name, Task::Executor(ExecutorCommand::Sync))
+                .await;
         }
 
         // TODO: return real hash

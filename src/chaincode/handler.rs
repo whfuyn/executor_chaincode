@@ -39,14 +39,14 @@ pub struct Handler {
     nonce: u64,
 }
 
-pub struct Registry {
+pub struct ChaincodeRegistry {
     pub name: String,
     pub handle: mpsc::Sender<Task>,
     pub resp_rx: mpsc::Receiver<ChaincodeMessage>,
 }
 
 impl Handler {
-    pub async fn register<T>(mut cc_stream: T) -> Result<Registry>
+    pub async fn register<T>(mut cc_stream: T) -> Result<ChaincodeRegistry>
     where
         T: Stream<Item = std::result::Result<ChaincodeMessage, tonic::Status>>
             + Unpin
@@ -106,7 +106,7 @@ impl Handler {
                     }
                 });
 
-                Ok(Registry {
+                Ok(ChaincodeRegistry {
                     name: cc_name,
                     handle: task_tx,
                     resp_rx,

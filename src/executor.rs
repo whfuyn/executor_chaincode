@@ -414,6 +414,7 @@ Jfn1p8cfo4BPd3tSllZEIbXE2uCMkKE4LGmo
         use std::time::Duration;
         use tokio::time::delay_for;
         let executor = run_executor();
+        delay_for(Duration::from_secs(5)).await;
         let mut sender = executor
             .cc_handles
             .read()
@@ -422,7 +423,6 @@ Jfn1p8cfo4BPd3tSllZEIbXE2uCMkKE4LGmo
             .next()
             .expect("no chaincode registered")
             .clone();
-        delay_for(Duration::from_secs(5)).await;
         for tx in txs {
             let (notifier, waiter) = futures::channel::oneshot::channel();
             sender

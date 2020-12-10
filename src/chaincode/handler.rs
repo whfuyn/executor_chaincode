@@ -58,7 +58,8 @@ impl Handler {
             if let Some(ChaincodeMsgType::Register) = ChaincodeMsgType::from_i32(msg.r#type) {
                 let (mut cc_side, resp_rx) = mpsc::channel(64);
 
-                let cc_name = String::from_utf8(msg.payload).unwrap();
+                let chaincode_id = pb::ChaincodeId::decode(&msg.payload[..])?;
+                let cc_name = chaincode_id.name;
                 let registered_resp = ChaincodeMessage {
                     r#type: ChaincodeMsgType::Registered as i32,
                     ..Default::default()
@@ -273,7 +274,6 @@ impl Handler {
 
     // Even without pagination, we still receive a close notification
     async fn handle_query_state_close(&mut self, msg: ChaincodeMessage) -> Result<()> {
-        info!("query_close_close, txid: {}", &msg.txid);
         let query_state_close = pb::QueryStateClose::decode(&msg.payload[..])?;
         let query_resp = pb::QueryResponse {
             has_more: false,

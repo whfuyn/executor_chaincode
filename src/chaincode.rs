@@ -21,20 +21,12 @@ pub struct TransactionResult {
 }
 
 #[derive(Debug)]
-pub struct ExecutorCommand {
-    tx_hash: Vec<u8>,
-    payload: Vec<u8>,
-    notifier: Sender<TransactionResult>,
-}
-
-impl ExecutorCommand {
-    pub fn new(tx_hash: Vec<u8>, payload: Vec<u8>, notifier: Sender<TransactionResult>) -> Self {
-        Self {
-            tx_hash,
-            payload,
-            notifier,
-        }
-    }
+pub enum ExecutorCommand {
+    Execute {
+        payload: Vec<u8>,
+        notifier: Sender<TransactionResult>,
+    },
+    Sync,
 }
 
 pub trait MessageDump {

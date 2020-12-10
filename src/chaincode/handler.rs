@@ -19,6 +19,8 @@ use crate::protos as pb;
 use crate::protos::chaincode_message::Type as ChaincodeMsgType;
 use crate::protos::ChaincodeMessage;
 
+const LEDGER_DATA_DIR: &str = "ledger";
+
 #[derive(Debug)]
 struct TransactionContext {
     pub channel_id: String,
@@ -76,7 +78,7 @@ impl Handler {
                 let mut handler = Self {
                     cc_name: cc_name.clone(),
                     cc_side,
-                    ledger: Ledger::load().await,
+                    ledger: Ledger::load(LEDGER_DATA_DIR).await,
                     contexts: HashMap::new(),
                     total_query_limit: 65536, // TODO: support pagination
                     nonce: 0,
@@ -289,7 +291,7 @@ impl Handler {
         Ok(())
     }
 
-    // This msg is to execute queries on db, which is not supported
+    // This msg is to execute structural queries on db, which is not supported yet
     async fn handle_get_query_result(&mut self, _msg: ChaincodeMessage) -> Result<()> {
         Err(Error::Unsupported("get_query_result is not supported yet"))
     }
@@ -329,7 +331,6 @@ impl Handler {
         let put_state = pb::PutState::decode(&msg.payload[..])?;
         let namespace_id = &self.cc_name;
         let collection = &put_state.collection;
-        // dbg!(&put_state.key);
         if !collection.is_empty() {
             if tx_context.is_init {
                 return Err(Error::InvalidOperation(
@@ -497,16 +498,20 @@ impl Handler {
     }
 
     async fn handle_executor_cmd(&mut self, cmd: ExecutorCommand) -> Result<()> {
-        let msg = ChaincodeMessage::decode(&cmd.payload[..])?;
-        let ctx = TransactionContext {
-            channel_id: msg.channel_id.clone(),
-            tx_id: msg.txid.clone(),
-            is_init: false,
-            notifier: cmd.notifier,
-        };
-        self.contexts.insert(ctx_id(&msg), ctx);
-        self.cc_side.send(msg).await.unwrap();
-
+        match cmd {
+            ExecutorCommand::Execute { payload, notifier } => {
+                let msg = ChaincodeMessage::decode(&payload[..])?;
+                let ctx = TransactionContext {
+                    channel_id: msg.channel_id.clone(),
+                    tx_id: msg.txid.clone(),
+                    is_init: false,
+                    notifier,
+                };
+                self.contexts.insert(ctx_id(&msg), ctx);
+                self.cc_side.send(msg).await.unwrap();
+            }
+            ExecutorCommand::Sync => self.ledger.sync().await,
+        }
         Ok(())
     }
 }

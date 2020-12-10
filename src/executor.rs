@@ -6,10 +6,14 @@ use tokio::fs;
 use tokio::sync::RwLock;
 use tonic::{Request, Response, Status};
 
+use bytes::Buf;
+use bytes::Bytes;
+
 use futures::channel::mpsc;
 use futures::channel::oneshot;
 use futures::SinkExt;
 use std::collections::HashMap;
+use std::collections::HashSet;
 use std::net::SocketAddr;
 
 use crate::chaincode::ChaincodeSupportService;
@@ -44,6 +48,7 @@ impl ExecutorServer {
 impl ExecutorService for ExecutorServer {
     async fn exec(&self, request: Request<CompactBlock>) -> Result<Response<Hash>, Status> {
         let block = request.into_inner();
+        let mut updated_cc = HashSet::new();
 
         if let Some(body) = block.body {
             for tx_hash in body.tx_hashes {
@@ -51,29 +56,35 @@ impl ExecutorService for ExecutorServer {
                 let root_path = Path::new(".");
                 let tx_path = root_path.join("txs").join(filename);
 
-                let tx_bytes = fs::read(tx_path).await.unwrap();
-                let raw_tx = RawTransaction::decode(tx_bytes.as_slice()).unwrap();
+                let mut tx_bytes = Bytes::from(fs::read(tx_path).await.unwrap());
+                let cc_name_len = tx_bytes.get_u64();
+                let cc_name =
+                    String::from_utf8_lossy(&tx_bytes.split_to(cc_name_len as usize)).to_string();
+
+                let raw_tx = RawTransaction::decode(&tx_bytes[..]).unwrap();
                 match raw_tx.tx {
                     Some(Tx::NormalTx(utx)) => {
                         if let Some(tx) = utx.transaction {
-                            let (notifer, waiter) = oneshot::channel();
-                            // For now, there is only one chaincode.
+                            let (notifier, waiter) = oneshot::channel();
                             {
                                 let mut h = self
                                     .cc_handles
                                     .read()
                                     .await
-                                    .values()
-                                    .next()
-                                    .unwrap()
+                                    .get(&cc_name)
+                                    .unwrap_or_else(|| {
+                                        panic!("chaincode `{}` is not registered", cc_name)
+                                    })
                                     .clone();
-                                h.send(Task::Executor(ExecutorCommand::new(
-                                    tx_hash, tx.data, notifer,
-                                )))
+                                h.send(Task::Executor(ExecutorCommand::Execute {
+                                    payload: tx.data,
+                                    notifier,
+                                }))
                                 .await
                                 .unwrap();
                             }
                             let TransactionResult { msg, result } = waiter.await.unwrap();
+                            updated_cc.insert(cc_name.clone());
                             info!("tx completed:\n  msg: `{}`\n  result: `{}`", msg, result);
                             println!("tx completed:\n  msg: `{}`\n  result: `{}`", msg, result);
                         } else {
@@ -85,6 +96,10 @@ impl ExecutorService for ExecutorServer {
                 }
             }
         }
+        for cc_name in updated_cc {
+            let mut h = self.cc_handles.read().await.get(&cc_name).unwrap().clone();
+            h.send(Task::Executor(ExecutorCommand::Sync)).await.unwrap();
+        }
 
         // TODO: return real hash
         let hash = vec![0u8; 33];
@@ -93,9 +108,7 @@ impl ExecutorService for ExecutorServer {
     }
 
     async fn call(&self, _request: Request<CallRequest>) -> Result<Response<CallResponse>, Status> {
-        let value = vec![0u8];
-        let reply = CallResponse { value };
-        Ok(Response::new(reply))
+        Err(Status::unimplemented("read-only call is not supported"))
     }
 }
 
@@ -409,11 +422,10 @@ Jfn1p8cfo4BPd3tSllZEIbXE2uCMkKE4LGmo
         for tx in txs {
             let (notifier, waiter) = futures::channel::oneshot::channel();
             sender
-                .send(Task::Executor(ExecutorCommand::new(
-                    tx.tx_id.as_bytes().to_vec(),
-                    tx.dump(),
+                .send(Task::Executor(ExecutorCommand::Execute{
+                    payload: tx.dump(),
                     notifier,
-                )))
+                }))
                 .await
                 .unwrap();
             waiter.await.unwrap();

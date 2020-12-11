@@ -30,5 +30,5 @@ install:
 script:
   - cargo fmt -- --check
   - cargo clippy --all-targets -- -D clippy::all
-  - Cargo build
+  - cargo build
   - cargo test -- --show-output

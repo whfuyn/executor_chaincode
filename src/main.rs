@@ -90,10 +90,8 @@ mod queryresult {
     tonic::include_proto!("queryresult");
 }
 
+use chaincode::ChaincodeRegistry;
 use executor::ChaincodeExecutor;
-use std::collections::HashMap;
-use std::sync::Arc;
-use tokio::sync::RwLock;
 
 #[tokio::main]
 async fn run(opts: RunOpts) -> Result<(), Box<dyn std::error::Error>> {
@@ -103,9 +101,9 @@ async fn run(opts: RunOpts) -> Result<(), Box<dyn std::error::Error>> {
         format!("127.0.0.1:7{}52", (executor_port - 50000) / 1000).parse()?
     };
 
-    let cc_handles = Arc::new(RwLock::new(HashMap::new()));
-    let mut cc_executor = ChaincodeExecutor::new(cc_handles);
-    cc_executor.run(executor_addr, chaincode_listen_addr).await;
+    let cc_registry = ChaincodeRegistry::new();
+    let mut executor = ChaincodeExecutor::new(cc_registry);
+    executor.run(executor_addr, chaincode_listen_addr).await;
 
     Ok(())
 }

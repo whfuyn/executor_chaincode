@@ -1,21 +1,18 @@
 use log::info;
 use prost::Message;
 use std::path::Path;
-use std::sync::Arc;
 use tokio::fs;
-use tokio::sync::RwLock;
 use tonic::{Request, Response, Status};
 
 use bytes::Buf;
 use bytes::Bytes;
 
-use futures::channel::mpsc;
 use futures::channel::oneshot;
 use futures::SinkExt;
-use std::collections::HashMap;
 use std::collections::HashSet;
 use std::net::SocketAddr;
 
+use crate::chaincode::ChaincodeRegistry;
 use crate::chaincode::ChaincodeSupportService;
 use crate::chaincode::ExecutorCommand;
 use crate::chaincode::Task;
@@ -35,23 +32,22 @@ use cita_cloud_proto::executor::{
 use tonic::transport::Server;
 
 pub struct ExecutorServer {
-    cc_handles: Arc<RwLock<HashMap<String, mpsc::Sender<Task>>>>,
+    cc_registry: ChaincodeRegistry,
 }
 
 impl ExecutorServer {
-    pub fn new(cc_handles: Arc<RwLock<HashMap<String, mpsc::Sender<Task>>>>) -> Self {
-        Self { cc_handles }
+    pub fn new(cc_registry: ChaincodeRegistry) -> Self {
+        Self { cc_registry }
     }
 
     async fn send_task(&self, cc_name: &str, task: Task) {
-        let mut h = self
-            .cc_handles
-            .read()
+        self.cc_registry
+            .get_sender(cc_name)
             .await
-            .get(cc_name)
             .unwrap_or_else(|| panic!("chaincode `{}` is not registered", cc_name))
-            .clone();
-        h.send(task).await.unwrap();
+            .send(task)
+            .await
+            .unwrap();
     }
 }
 
@@ -118,16 +114,16 @@ impl ExecutorService for ExecutorServer {
 
 #[derive(Clone)]
 pub struct ChaincodeExecutor {
-    cc_handles: Arc<RwLock<HashMap<String, mpsc::Sender<Task>>>>,
+    cc_registry: ChaincodeRegistry,
 }
 
 impl ChaincodeExecutor {
-    pub fn new(cc_handles: Arc<RwLock<HashMap<String, mpsc::Sender<Task>>>>) -> Self {
-        Self { cc_handles }
+    pub fn new(cc_registry: ChaincodeRegistry) -> Self {
+        Self { cc_registry }
     }
 
     pub async fn run(&mut self, executor_addr: SocketAddr, chaincode_listen_addr: SocketAddr) {
-        let chaincode_support = ChaincodeSupportService::new(self.cc_handles.clone());
+        let chaincode_support = ChaincodeSupportService::new(self.cc_registry.clone());
         let ccs_svc = ChaincodeSupportServer::new(chaincode_support);
 
         tokio::spawn(async move {
@@ -138,7 +134,8 @@ impl ChaincodeExecutor {
                 .unwrap();
         });
 
-        let executor_svc = ExecutorServiceServer::new(ExecutorServer::new(self.cc_handles.clone()));
+        let executor_svc =
+            ExecutorServiceServer::new(ExecutorServer::new(self.cc_registry.clone()));
         Server::builder()
             .add_service(executor_svc)
             .serve(executor_addr)
@@ -151,6 +148,7 @@ impl ChaincodeExecutor {
 mod tests {
     use super::*;
     use crate::chaincode::get_timestamp;
+    use crate::chaincode::ChaincodeRegistry;
     use crate::chaincode::MessageDump;
     use crate::common;
     use crate::msp;
@@ -158,12 +156,14 @@ mod tests {
     use crate::protos::chaincode_message::Type as ChaincodeMsgType;
     use crate::protos::ChaincodeMessage;
 
+    use std::collections::HashMap;
+
     fn run_executor(
         executor_addr: &'static str,
         chaincode_listen_addr: &'static str,
     ) -> ChaincodeExecutor {
-        let cc_handles = Arc::new(RwLock::new(HashMap::new()));
-        let mut cc_executor = ChaincodeExecutor::new(cc_handles);
+        let cc_registry = ChaincodeRegistry::new();
+        let mut cc_executor = ChaincodeExecutor::new(cc_registry);
         let cc_executor_cloned = cc_executor.clone();
         tokio::spawn(async move {
             cc_executor
@@ -349,6 +349,7 @@ Jfn1p8cfo4BPd3tSllZEIbXE2uCMkKE4LGmo
     #[tokio::test]
     #[ignore] // this test requires chaincode setup
     async fn test_asset_transfer_basic() {
+        let cc_name = "asset-transfer-basic";
         let (mut org, _) = default_orgs();
 
         let mut txs = vec![];
@@ -361,12 +362,14 @@ Jfn1p8cfo4BPd3tSllZEIbXE2uCMkKE4LGmo
         let executor_addr = "127.0.0.1:50003";
         let chaincode_listen_addr = "127.0.0.1:7052";
         let executor = run_executor(executor_addr, chaincode_listen_addr);
-        exec_txs(executor, txs).await;
+
+        exec_txs(executor, cc_name, txs).await;
     }
 
     #[tokio::test]
     #[ignore] // this test requires chaincode setup
     async fn test_asset_transfer_secured_agreement() {
+        let cc_name = "asset-transfer-secured-agreement";
         let (mut org1, mut org2) = default_orgs();
 
         let mut txs = vec![];
@@ -434,21 +437,19 @@ Jfn1p8cfo4BPd3tSllZEIbXE2uCMkKE4LGmo
         let executor_addr = "127.0.0.1:51003";
         let chaincode_listen_addr = "127.0.0.1:7152";
         let executor = run_executor(executor_addr, chaincode_listen_addr);
-        exec_txs(executor, txs).await;
+
+        exec_txs(executor, cc_name, txs).await;
     }
 
-    async fn exec_txs(executor: ChaincodeExecutor, txs: Vec<TestTransaction>) {
+    async fn exec_txs(executor: ChaincodeExecutor, cc_name: &str, txs: Vec<TestTransaction>) {
         use std::time::Duration;
         use tokio::time::delay_for;
         delay_for(Duration::from_secs(5)).await;
         let mut sender = executor
-            .cc_handles
-            .read()
+            .cc_registry
+            .get_sender(cc_name)
             .await
-            .values()
-            .next()
-            .expect("no chaincode registered")
-            .clone();
+            .unwrap_or_else(|| panic!("chaincode `{}` is not registered", cc_name));
         for tx in txs {
             let (notifier, waiter) = futures::channel::oneshot::channel();
             sender

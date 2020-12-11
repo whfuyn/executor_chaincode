@@ -1,10 +1,10 @@
 use futures::channel::mpsc;
 use futures::channel::oneshot;
+use futures::stream;
 use futures::SinkExt;
 use futures::Stream;
 use futures::StreamExt;
-use futures::{future, stream};
-use log::{info, warn};
+use log::warn;
 use prost::Message;
 use std::collections::HashMap;
 use std::path::Path;
@@ -12,6 +12,7 @@ use std::path::Path;
 use super::error::Error;
 use super::error::Result;
 use super::ledger::Ledger;
+use super::ChaincodeRegistry;
 use super::ExecutorCommand;
 use super::MessageDump;
 use super::Task;
@@ -40,14 +41,11 @@ pub struct Handler {
     nonce: u64,
 }
 
-pub struct ChaincodeRegistry {
-    pub name: String,
-    pub handle: mpsc::Sender<Task>,
-    pub resp_rx: mpsc::Receiver<ChaincodeMessage>,
-}
-
 impl Handler {
-    pub async fn register<T>(mut cc_stream: T) -> Result<ChaincodeRegistry>
+    pub async fn register<T>(
+        mut cc_stream: T,
+        cc_registry: ChaincodeRegistry,
+    ) -> Result<mpsc::Receiver<ChaincodeMessage>>
     where
         T: Stream<Item = std::result::Result<ChaincodeMessage, tonic::Status>>
             + Unpin
@@ -73,9 +71,8 @@ impl Handler {
                 };
                 cc_side.send(ready_req).await.unwrap();
 
-                info!("Chaincode `{}` registered.", cc_name);
-
                 let (task_tx, task_rx) = mpsc::channel(64);
+                cc_registry.register(cc_name.clone(), task_tx).await;
 
                 let data_dir = Path::new(LEDGER_DATA_DIR).join(&cc_name);
                 let mut handler = Self {
@@ -88,31 +85,31 @@ impl Handler {
                 };
 
                 tokio::spawn(async move {
-                    let cc_stream = cc_stream.filter_map(|res| match res {
-                        Ok(msg) => future::ready(Some(Task::Chaincode(msg))),
-                        Err(e) => {
-                            warn!("Chaincode stream error: `{:?}`", e);
-                            panic!("chaincode is down")
-                        }
-                    });
+                    let cc_stream = cc_stream.map(Box::new).map(Task::Chaincode);
                     let mut task_stream = stream::select(cc_stream, task_rx);
                     while let Some(msg) = task_stream.next().await {
                         match msg {
-                            Task::Chaincode(msg) => {
-                                if let Err(e) = handler.handle_chaincode_msg(msg).await {
-                                    warn!("handle chaincode msg error: `{}`", e);
+                            Task::Executor(cmd) => {
+                                if let Err(e) = handler.handle_executor_cmd(cmd).await {
+                                    warn!("handle executor cmd error: `{}`", e);
                                 }
                             }
-                            Task::Executor(cmd) => handler.handle_executor_cmd(cmd).await.unwrap(),
+                            Task::Chaincode(boxed) => match *boxed {
+                                Ok(msg) => {
+                                    if let Err(e) = handler.handle_chaincode_msg(msg).await {
+                                        warn!("handle chaincode msg error: `{}`", e);
+                                    }
+                                }
+                                Err(status) => {
+                                    warn!("recv error from chaincode msg stream: `{}`", status);
+                                    cc_registry.deregister(&cc_name).await;
+                                }
+                            },
                         }
                     }
                 });
 
-                Ok(ChaincodeRegistry {
-                    name: cc_name,
-                    handle: task_tx,
-                    resp_rx,
-                })
+                Ok(resp_rx)
             } else {
                 Err(Error::NotRegistered)
             }

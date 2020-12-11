@@ -1,30 +1,23 @@
-use std::collections::HashMap;
 use std::pin::Pin;
-use std::sync::Arc;
 
 use tonic::{Response, Status};
 
-use futures::channel::mpsc;
 use futures::stream::Stream;
 use futures::stream::StreamExt;
-
-use tokio::sync::RwLock;
 
 use crate::protos::chaincode_support_server::ChaincodeSupport;
 use crate::protos::ChaincodeMessage;
 
-use super::Task;
-
-use super::handler::ChaincodeRegistry;
 use super::handler::Handler;
+use super::ChaincodeRegistry;
 
 pub struct ChaincodeSupportService {
-    cc_handles: Arc<RwLock<HashMap<String, mpsc::Sender<Task>>>>,
+    cc_registry: ChaincodeRegistry,
 }
 
 impl ChaincodeSupportService {
-    pub fn new(cc_handles: Arc<RwLock<HashMap<String, mpsc::Sender<Task>>>>) -> Self {
-        Self { cc_handles }
+    pub fn new(cc_registry: ChaincodeRegistry) -> Self {
+        Self { cc_registry }
     }
 }
 
@@ -38,13 +31,9 @@ impl ChaincodeSupport for ChaincodeSupportService {
         request: tonic::Request<tonic::Streaming<ChaincodeMessage>>,
     ) -> Result<tonic::Response<Self::RegisterStream>, tonic::Status> {
         let cc_stream = request.into_inner();
-        let ChaincodeRegistry {
-            name,
-            handle,
-            mut resp_rx,
-        } = Handler::register(cc_stream).await.unwrap();
-
-        self.cc_handles.write().await.insert(name, handle);
+        let mut resp_rx = Handler::register(cc_stream, self.cc_registry.clone())
+            .await
+            .unwrap();
 
         let output = async_stream::try_stream! {
             while let Some(msg) = resp_rx.next().await {

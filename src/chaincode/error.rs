@@ -1,6 +1,8 @@
-use crate::protos::ChaincodeMessage;
+use futures::channel::mpsc;
 use prost::DecodeError;
 use thiserror::Error as ThisError;
+
+use crate::protos::ChaincodeMessage;
 
 pub type Result<T> = std::result::Result<T, Error>;
 
@@ -13,7 +15,7 @@ pub enum Error {
     #[error("chaincode msg decode failed: {0}")]
     DecodeError(#[from] DecodeError),
     #[error("chat stream with chaincode is interrupted: {0}")]
-    InterruptedStream(#[from] futures::channel::mpsc::SendError),
+    InterruptedStream(#[from] mpsc::SendError),
     #[error("invalid operation: {0}")]
     InvalidOperation(&'static str),
     #[error("invalid chaincode msg: {0:?}")]

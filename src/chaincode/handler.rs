@@ -63,13 +63,13 @@ impl Handler {
                     r#type: ChaincodeMsgType::Registered as i32,
                     ..Default::default()
                 };
-                cc_side.send(registered_resp).await.unwrap();
+                cc_side.send(registered_resp).await?;
 
                 let ready_req = ChaincodeMessage {
                     r#type: ChaincodeMsgType::Ready as i32,
                     ..Default::default()
                 };
-                cc_side.send(ready_req).await.unwrap();
+                cc_side.send(ready_req).await?;
 
                 let (task_tx, task_rx) = mpsc::channel(64);
                 cc_registry.register(cc_name.clone(), task_tx).await;

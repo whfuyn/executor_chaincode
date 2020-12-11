@@ -16,6 +16,12 @@ Users can write their smart contracts in chaincode, and run it in CITA-Cloud.
 cargo build --release
 ```
 
+To build docker image:
+
+```
+docker build -t citacloud/executor_chaincode .
+```
+
 You may find more details in [runner_k8s](https://github.com/cita-cloud/runner_k8s) and [runner_consul](https://github.com/cita-cloud/runner_consul)
 
 ### 2. Chaincode
@@ -35,7 +41,7 @@ In fabric, some transaction can only be simulated and endorsed by peers in the s
 
 * `CORE_PEER_LOCALMSPID` represents the org of the peer running this chaincode server.
 
-    Due to the different models of executing a transaction between CITA-Cloud and fabric, constraining a transaction to be executed in a specific executor is not viable. So the org check in the `asset-transfer-secured-agreement` is removed.
+    Due to the different executing models of transactions between CITA-Cloud and fabric, constraining a transaction to be executed in a specific executor is infeasible. So the org check in the `asset-transfer-secured-agreement` is removed.
 
 * `CORE_PEER_TLS_ENABLED` is not supported yet.
 
@@ -68,10 +74,31 @@ ChaincodeMessage {
 }
 ```
 
-I wrote a [tool](https://github.com/cita-cloud/chaincode_invoker) for building and sending this kind of transaction.
+I write a [library](https://github.com/cita-cloud/chaincode_invoker) for building and sending this kind of transaction.
 
+## Limitations
 
-## Build docker image
+### 1. Private data and organization check
+
+Since transactions are executed equally on every peers, 
+organization check that verify peer and client org match will fail, 
+and private data attached to the transaction will be sent to and stored by every peers.
+
+### 2. Channel
+
+Channel is not supported yet. Users may run multiple CITA-Cloud instances to simulate channel.
+
+### 3. Pagination
+
+Paginated queries are not supported yet. Queries will return full results at once.
+
+### 4. Invoke other chaincodes
+
+Invoking other chaincodes is not supported yet.
+
+### 5. DB specified queries
+
+```go
+ctx.GetStub().GetQueryResult(queryString)
 ```
-docker build -t citacloud/executor_chaincode .
-```
+This kind of DB specified queries is not supported yet. 

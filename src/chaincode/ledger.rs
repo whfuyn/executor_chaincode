@@ -504,7 +504,7 @@ mod tests {
         let namespace = "namespace";
         let tx_id = "123";
         let key = "key";
-        let value = "value".as_bytes().to_vec();
+        let value = b"value".to_vec();
         ledger.set_state(namespace, tx_id, key, value.clone()).await;
         assert_eq!(ledger.get_state(namespace, key), Some(&value));
     }
@@ -515,7 +515,7 @@ mod tests {
         let namespace = "namespace";
         let key = "key";
         let metakey = "metakey".to_string();
-        let value = "value".as_bytes().to_vec();
+        let value = b"value".to_vec();
         let metadata = StateMetadata {
             metakey: metakey.clone(),
             value: value.clone(),
@@ -535,7 +535,7 @@ mod tests {
         let namespace = "namespace";
         let collection = "collection";
         let key = "key";
-        let value = "value".as_bytes().to_vec();
+        let value = b"value".to_vec();
         ledger
             .set_private_data(namespace, collection, key, value.clone())
             .await;
@@ -552,7 +552,7 @@ mod tests {
         let collection = "collection";
         let key = "key";
         let metakey = "metakey".to_string();
-        let value = "value".as_bytes().to_vec();
+        let value = b"value".to_vec();
         let metadata = StateMetadata {
             metakey: metakey.clone(),
             value: value.clone(),
@@ -577,7 +577,7 @@ mod tests {
         let namespace = "namespace";
         let collection = "collection";
         let key = "key";
-        let value = "value".as_bytes().to_vec();
+        let value = b"value".to_vec();
         ledger
             .set_private_data(namespace, collection, key, value.clone())
             .await;
@@ -717,7 +717,7 @@ mod tests {
         });
 
         let tx_id = "667".to_string();
-        let value = "value667".as_bytes().to_vec();
+        let value = b"value667".to_vec();
         ledger
             .set_state(namespace, &tx_id, key, value.clone())
             .await;
@@ -740,7 +740,7 @@ mod tests {
         let namespace = "namespace";
         let key = "key";
         let tx_id = "123";
-        let value = "value".as_bytes().to_vec();
+        let value = b"value".to_vec();
         ledger.set_state(namespace, tx_id, key, value.clone()).await;
         assert_eq!(ledger.get_state(namespace, key), Some(&value));
         ledger.delete_state(namespace, tx_id, key).await;
@@ -753,7 +753,7 @@ mod tests {
         let namespace = "namespace";
         let collection = "collection";
         let key = "key";
-        let value = "value".as_bytes().to_vec();
+        let value = b"value".to_vec();
         ledger
             .set_private_data(namespace, collection, key, value.clone())
             .await;

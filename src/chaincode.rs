@@ -76,7 +76,7 @@ impl ChaincodeRegistry {
         }
     }
 
-    pub async fn get_sender(&self, name: &str) -> Option<mpsc::Sender<Task>> {
+    pub async fn entry(&self, name: &str) -> Option<mpsc::Sender<Task>> {
         self.registry.read().await.get(name).cloned()
     }
 }

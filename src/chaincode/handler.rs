@@ -117,7 +117,9 @@ impl Handler {
 
             Ok(resp_rx)
         } else {
-            Err(Error::NotRegistered)
+            Err(Error::Other(
+                "first msg from register stream must be register msg".to_string(),
+            ))
         }
     }
 

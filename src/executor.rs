@@ -12,6 +12,8 @@ use futures::SinkExt;
 use std::collections::HashSet;
 use std::net::SocketAddr;
 
+use crate::chaincode::error::Error;
+use crate::chaincode::error::Result;
 use crate::chaincode::ChaincodeRegistry;
 use crate::chaincode::ChaincodeSupportService;
 use crate::chaincode::ExecutorCommand;
@@ -40,20 +42,21 @@ impl ExecutorServer {
         Self { cc_registry }
     }
 
-    async fn send_task(&self, cc_name: &str, task: Task) {
-        self.cc_registry
-            .get_sender(cc_name)
-            .await
-            .unwrap_or_else(|| panic!("chaincode `{}` is not registered", cc_name))
-            .send(task)
-            .await
-            .unwrap();
+    async fn send_task(&self, cc_name: &str, task: Task) -> Result<()> {
+        match self.cc_registry.entry(cc_name).await {
+            Some(sender) => sender.clone().send(task).await?,
+            None => return Err(Error::NotRegistered(cc_name.to_string())),
+        }
+        Ok(())
     }
 }
 
 #[tonic::async_trait]
 impl ExecutorService for ExecutorServer {
-    async fn exec(&self, request: Request<CompactBlock>) -> Result<Response<Hash>, Status> {
+    async fn exec(
+        &self,
+        request: Request<CompactBlock>,
+    ) -> std::result::Result<Response<Hash>, Status> {
         let block = request.into_inner();
         let mut updated_cc = HashSet::new();
 
@@ -82,7 +85,8 @@ impl ExecutorService for ExecutorServer {
                                     notifier,
                                 }),
                             )
-                            .await;
+                            .await
+                            .map_err(|e| Status::not_found(e.to_string()))?;
                             let TransactionResult { msg, result } = waiter.await.unwrap();
                             updated_cc.insert(cc_name.clone());
                             info!("tx completed:\n  msg: `{}`\n  result: `{}`", msg, result);
@@ -98,7 +102,8 @@ impl ExecutorService for ExecutorServer {
         }
         for cc_name in updated_cc {
             self.send_task(&cc_name, Task::Executor(ExecutorCommand::Sync))
-                .await;
+                .await
+                .map_err(|e| Status::not_found(e.to_string()))?;
         }
 
         // TODO: return real hash
@@ -107,7 +112,10 @@ impl ExecutorService for ExecutorServer {
         Ok(Response::new(reply))
     }
 
-    async fn call(&self, _request: Request<CallRequest>) -> Result<Response<CallResponse>, Status> {
+    async fn call(
+        &self,
+        _request: Request<CallRequest>,
+    ) -> std::result::Result<Response<CallResponse>, Status> {
         Err(Status::unimplemented("read-only call is not supported"))
     }
 }
@@ -447,7 +455,7 @@ Jfn1p8cfo4BPd3tSllZEIbXE2uCMkKE4LGmo
         delay_for(Duration::from_secs(5)).await;
         let mut sender = executor
             .cc_registry
-            .get_sender(cc_name)
+            .entry(cc_name)
             .await
             .unwrap_or_else(|| panic!("chaincode `{}` is not registered", cc_name));
         for tx in txs {

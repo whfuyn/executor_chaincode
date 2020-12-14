@@ -8,8 +8,8 @@ pub type Result<T> = std::result::Result<T, Error>;
 
 #[derive(Debug, ThisError)]
 pub enum Error {
-    #[error("The first chaincode msg must be register")]
-    NotRegistered,
+    #[error("chaincode `{0}` is not registered")]
+    NotRegistered(String),
     #[error("unsupported: {0}")]
     Unsupported(&'static str),
     #[error("chaincode msg decode failed: {0}")]

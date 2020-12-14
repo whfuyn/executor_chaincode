@@ -31,4 +31,4 @@ script:
   - cargo fmt -- --check
   - cargo clippy --all-targets -- -D clippy::all
   - cargo build
-  - cargo test -- --show-output
+  - cargo test

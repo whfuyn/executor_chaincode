@@ -103,6 +103,7 @@ impl Handler {
                                 Err(status) => {
                                     warn!("recv error from chaincode msg stream: `{}`", status);
                                     cc_registry.deregister(&cc_name).await;
+                                    return;
                                 }
                             },
                         }

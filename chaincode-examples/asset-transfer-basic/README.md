@@ -1,6 +1,6 @@
 # Asset transfer basic
 
-This chaincode example is from fabric-samples.
+This chaincode example is from [fabric-samples](https://github.com/hyperledger/fabric-samples).
 
 ## Usage
 
@@ -15,7 +15,8 @@ docker run \
     -e CORE_PEER_LOCALMSPID="Org1MSP" \
     -e CORE_PEER_TLS_ENABLED="false" \
     -e CORE_CHAINCODE_ID_NAME="asset-transfer-basic" \
-    --net host asset-transfer-basic \
+    --net host \
+    asset-transfer-basic \
     --peer.address "127.0.0.1:7052"
 ```
 

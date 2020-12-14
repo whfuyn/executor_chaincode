@@ -1,6 +1,6 @@
 # Secured asset transfer
 
-This example chaincode is from fabric-samples.
+This example chaincode is from [fabric-samples](https://github.com/hyperledger/fabric-samples).
 
 [Secured asset transfer in Fabric Tutorial](https://hyperledger-fabric.readthedocs.io/en/latest/secured_asset_transfer/secured_private_asset_transfer_tutorial.html)
 

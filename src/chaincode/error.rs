@@ -14,14 +14,16 @@ pub enum Error {
     Unsupported(&'static str),
     #[error("chaincode msg decode failed: {0}")]
     DecodeError(#[from] DecodeError),
-    #[error("chat stream with chaincode is interrupted: {0}")]
+    #[error("chaincode chat stream is interrupted: {0}")]
     InterruptedStream(#[from] mpsc::SendError),
+    #[error("gRPC error: {0}")]
+    GrpcError(#[from] tonic::Status),
     #[error("invalid operation: {0}")]
     InvalidOperation(&'static str),
     #[error("invalid chaincode msg: {0:?}")]
     InvalidChaincodeMsg(ChaincodeMessage),
     #[error("unknown chaincode msg type: {0:?}")]
     UnknownChaincodeMsg(ChaincodeMessage),
-    #[error("other")]
-    Other,
+    #[error("other error: {0}")]
+    Other(String),
 }

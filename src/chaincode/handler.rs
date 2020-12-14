@@ -53,69 +53,71 @@ impl Handler {
             + Sync
             + 'static,
     {
-        if let Some(Ok(msg)) = cc_stream.next().await {
-            if let Some(ChaincodeMsgType::Register) = ChaincodeMsgType::from_i32(msg.r#type) {
-                let (mut cc_side, resp_rx) = mpsc::channel(64);
+        let msg = match cc_stream.next().await {
+            Some(req) => req?,
+            None => {
+                return Err(Error::Other("register stream is empty".to_string()));
+            }
+        };
+        if let Some(ChaincodeMsgType::Register) = ChaincodeMsgType::from_i32(msg.r#type) {
+            let (mut cc_side, resp_rx) = mpsc::channel(64);
 
-                let chaincode_id = pb::ChaincodeId::decode(&msg.payload[..])?;
-                let cc_name = chaincode_id.name;
-                let registered_resp = ChaincodeMessage {
-                    r#type: ChaincodeMsgType::Registered as i32,
-                    ..Default::default()
-                };
-                cc_side.send(registered_resp).await?;
+            let chaincode_id = pb::ChaincodeId::decode(&msg.payload[..])?;
+            let cc_name = chaincode_id.name;
+            let registered_resp = ChaincodeMessage {
+                r#type: ChaincodeMsgType::Registered as i32,
+                ..Default::default()
+            };
+            cc_side.send(registered_resp).await?;
 
-                let ready_req = ChaincodeMessage {
-                    r#type: ChaincodeMsgType::Ready as i32,
-                    ..Default::default()
-                };
-                cc_side.send(ready_req).await?;
+            let ready_req = ChaincodeMessage {
+                r#type: ChaincodeMsgType::Ready as i32,
+                ..Default::default()
+            };
+            cc_side.send(ready_req).await?;
 
-                let (task_tx, task_rx) = mpsc::channel(64);
-                cc_registry.register(cc_name.clone(), task_tx).await;
+            let (task_tx, task_rx) = mpsc::channel(64);
+            cc_registry.register(cc_name.clone(), task_tx).await;
 
-                let data_dir = Path::new(LEDGER_DATA_DIR).join(&cc_name);
-                let mut handler = Self {
-                    cc_name: cc_name.clone(),
-                    cc_side,
-                    ledger: Ledger::load(data_dir).await,
-                    contexts: HashMap::new(),
-                    total_query_limit: 65536, // TODO: support pagination
-                    nonce: 0,
-                };
+            let data_dir = Path::new(LEDGER_DATA_DIR).join(&cc_name);
+            let mut handler = Self {
+                cc_name: cc_name.clone(),
+                cc_side,
+                ledger: Ledger::load(data_dir).await,
+                contexts: HashMap::new(),
+                total_query_limit: 65536, // TODO: support pagination
+                nonce: 0,
+            };
 
-                tokio::spawn(async move {
-                    let cc_stream = cc_stream.map(Box::new).map(Task::Chaincode);
-                    let mut task_stream = stream::select(cc_stream, task_rx);
-                    while let Some(msg) = task_stream.next().await {
-                        match msg {
-                            Task::Executor(cmd) => {
-                                if let Err(e) = handler.handle_executor_cmd(cmd).await {
-                                    warn!("handle executor cmd error: `{}`", e);
+            tokio::spawn(async move {
+                let cc_stream = cc_stream.map(Box::new).map(Task::Chaincode);
+                let mut task_stream = stream::select(cc_stream, task_rx);
+                while let Some(msg) = task_stream.next().await {
+                    match msg {
+                        Task::Executor(cmd) => {
+                            if let Err(e) = handler.handle_executor_cmd(cmd).await {
+                                warn!("handle executor cmd error: `{}`", e);
+                            }
+                        }
+                        Task::Chaincode(boxed) => match *boxed {
+                            Ok(msg) => {
+                                if let Err(e) = handler.handle_chaincode_msg(msg).await {
+                                    warn!("handle chaincode msg error: `{}`", e);
                                 }
                             }
-                            Task::Chaincode(boxed) => match *boxed {
-                                Ok(msg) => {
-                                    if let Err(e) = handler.handle_chaincode_msg(msg).await {
-                                        warn!("handle chaincode msg error: `{}`", e);
-                                    }
-                                }
-                                Err(status) => {
-                                    warn!("recv error from chaincode msg stream: `{}`", status);
-                                    cc_registry.deregister(&cc_name).await;
-                                    return;
-                                }
-                            },
-                        }
+                            Err(status) => {
+                                warn!("recv error from chaincode msg stream: `{}`", status);
+                                cc_registry.deregister(&cc_name).await;
+                                return;
+                            }
+                        },
                     }
-                });
+                }
+            });
 
-                Ok(resp_rx)
-            } else {
-                Err(Error::NotRegistered)
-            }
+            Ok(resp_rx)
         } else {
-            Err(Error::Other)
+            Err(Error::NotRegistered)
         }
     }
 
@@ -147,6 +149,7 @@ impl Handler {
             ..Default::default()
         };
         self.cc_side.send(resp).await?;
+
         Ok(())
     }
 
@@ -508,7 +511,7 @@ impl Handler {
                     notifier,
                 };
                 self.contexts.insert(ctx_id(&msg), ctx);
-                self.cc_side.send(msg).await.unwrap();
+                self.cc_side.send(msg).await?;
             }
             ExecutorCommand::Sync => self.ledger.sync().await,
         }

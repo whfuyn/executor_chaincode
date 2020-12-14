@@ -31,9 +31,10 @@ impl ChaincodeSupport for ChaincodeSupportService {
         request: tonic::Request<tonic::Streaming<ChaincodeMessage>>,
     ) -> Result<tonic::Response<Self::RegisterStream>, tonic::Status> {
         let cc_stream = request.into_inner();
-        let mut resp_rx = Handler::register(cc_stream, self.cc_registry.clone())
-            .await
-            .unwrap();
+        let mut resp_rx = match Handler::register(cc_stream, self.cc_registry.clone()).await {
+            Ok(resp_rx) => resp_rx,
+            Err(e) => return Err(tonic::Status::aborted(e.to_string())),
+        };
 
         let output = async_stream::try_stream! {
             while let Some(msg) = resp_rx.next().await {

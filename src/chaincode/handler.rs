@@ -456,13 +456,12 @@ impl Handler {
     }
 
     async fn handle_error(&mut self, msg: ChaincodeMessage) -> Result<()> {
-        let resp = pb::Response::decode(&msg.payload[..])?;
         let ctx = self.contexts.remove(&ctx_id(&msg)).unwrap();
-        let result = String::from_utf8_lossy(&resp.payload);
+        let error_msg = String::from_utf8_lossy(&msg.payload);
         ctx.notifier
             .send(TransactionResult {
-                msg: resp.message,
-                result: result.to_string(),
+                msg: error_msg.to_string(),
+                result: "".to_string(),
             })
             .unwrap();
         Ok(())
@@ -496,8 +495,8 @@ impl Handler {
             PutStateMetadata => self.handle_put_state_metadata(msg).await,
             InvokeChaincode => self.handle_invoke_chaincode(msg).await,
             Keepalive => self.handle_keepalive(msg).await,
-            Error => self.handle_error(msg).await,
             Completed => self.handle_completed(msg).await,
+            Error => self.handle_error(msg).await,
             _unexpected => Err(super::error::Error::InvalidChaincodeMsg(msg)),
         }
     }

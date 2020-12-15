@@ -361,11 +361,10 @@ Jfn1p8cfo4BPd3tSllZEIbXE2uCMkKE4LGmo
         let (mut org, _) = default_orgs();
 
         let mut txs = vec![];
-        txs.push(org.build("InitLedger", &["asset8", "blue", "16", "Kelly", "750"], &[]));
-        txs.push(org.build("ReadAsset", &["asset8"], &[]));
+        txs.push(org.build("InitLedger", &[], &[]));
         txs.push(org.build("GetAllAssets", &[], &[]));
-        txs.push(org.build("TransferAsset", &["asset1", "Alice"], &[]));
-        txs.push(org.build("ReadAsset", &["asset1"], &[]));
+        txs.push(org.build("TransferAsset", &["asset6", "Christopher"], &[]));
+        txs.push(org.build("ReadAsset", &["asset6"], &[]));
 
         let executor_addr = "127.0.0.1:50003";
         let chaincode_listen_addr = "127.0.0.1:7052";

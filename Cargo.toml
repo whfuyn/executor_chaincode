@@ -1,7 +1,8 @@
 [package]
 name = "executor"
-version = "0.1.0"
-authors = ["whfuyn <whfuyn@outlook.com>"]
+version = "0.2.0"
+authors = ["Rivtower Technologies <contact@rivtower.com>"]
+license = "Apache-2.0"
 edition = "2018"
 
 [dependencies]

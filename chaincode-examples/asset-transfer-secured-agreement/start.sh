@@ -1,1 +1,1 @@
-CORE_PEER_LOCALMSPID="Org1MSP" CORE_PEER_TLS_ENABLED="false" CORE_CHAINCODE_ID_NAME="asset-transfer-secured-agreement" ./tradingMarbles -peer.address 127.0.0.1:7052
+CORE_PEER_LOCALMSPID="Org1MSP" CORE_PEER_TLS_ENABLED="false" CORE_CHAINCODE_ID_NAME="asset-transfer-secured-agreement" ./tradingMarbles --peer.address 127.0.0.1:7052

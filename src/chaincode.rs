@@ -101,7 +101,7 @@ pub trait MessageDump {
 
 impl<T: Message> MessageDump for T {
     fn dump(&self) -> Vec<u8> {
-        let mut payload = vec![];
+        let mut payload = Vec::with_capacity(self.encoded_len());
         self.encode(&mut payload).unwrap();
         payload
     }

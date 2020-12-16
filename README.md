@@ -37,7 +37,7 @@ CORE_PEER_TLS_ENABLED="false" \
 CORE_CHAINCODE_ID_NAME="asset-transfer-secured-agreement" \
 ./tradingMarbles --peer.address 127.0.0.1:7052
 ```
-In fabric, some transaction can only be simulated and endorsed by peers in the same org with the peer.
+In fabric, some transaction can only be simulated and endorsed by peers in the same org with the client.
 
 * `CORE_PEER_LOCALMSPID` represents the org of the peer running this chaincode server.
 
@@ -47,9 +47,9 @@ In fabric, some transaction can only be simulated and endorsed by peers in the s
 
 * `CORE_CHAINCODE_ID_NAME` is the name of the chaincode.
 
-* `-peer.address` is the executor's address. Chaincode will register itself to the executor to start a bidirectional request/response stream.
+* `--peer.address` is the executor's address. Chaincode will register itself to the executor to start a bidirectional request/response stream.
 
-You may check `./examples` to see some chaincodes examples from `fabric-samples`.
+You may check `./examples` to see some chaincodes examples from [fabric-samples](https://github.com/hyperledger/fabric-samples).
 
 ### 3. Send transaction
 

@@ -24,7 +24,7 @@ const GIT_HOMEPAGE: &str = "https://github.com/cita-cloud/executor_chaincode";
 
 /// network service
 #[derive(Clap)]
-#[clap(version = "0.1.0", author = "Rivtower Technologies.")]
+#[clap(version = "0.2.0", author = "Rivtower Technologies.")]
 struct Opts {
     #[clap(subcommand)]
     subcmd: SubCommand,

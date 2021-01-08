@@ -236,7 +236,7 @@ mod tests {
     }
 
     impl TestTransaction {
-        fn dump(&self) -> Vec<u8> {
+        fn to_msg(&self) -> ChaincodeMessage {
             let header = {
                 let channel_header = common::ChannelHeader {
                     r#type: common::HeaderType::EndorserTransaction as i32,
@@ -295,7 +295,6 @@ mod tests {
                 proposal: Some(signed_proposal),
                 ..Default::default()
             }
-            .dump()
         }
     }
 
@@ -499,7 +498,7 @@ Jfn1p8cfo4BPd3tSllZEIbXE2uCMkKE4LGmo
             let (notifier, waiter) = futures::channel::oneshot::channel();
             sender
                 .send(Task::Executor(ExecutorCommand::Execute {
-                    payload: tx.dump(),
+                    msg: tx.to_msg(),
                     notifier,
                 }))
                 .await

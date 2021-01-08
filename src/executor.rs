@@ -18,9 +18,6 @@ use std::path::Path;
 use tokio::fs;
 use tonic::{Request, Response, Status};
 
-use bytes::Buf;
-use bytes::Bytes;
-
 use futures::channel::oneshot;
 use futures::SinkExt;
 use std::collections::HashSet;
@@ -33,6 +30,11 @@ use crate::chaincode::ChaincodeSupportService;
 use crate::chaincode::ExecutorCommand;
 use crate::chaincode::Task;
 use crate::chaincode::TransactionResult;
+
+use crate::composer::executor_call::Call;
+use crate::composer::ChaincodeInvoke;
+use crate::composer::ExecutorCall;
+use crate::composer::LedgerPut;
 
 use crate::protos::chaincode_support_server::ChaincodeSupportServer;
 
@@ -86,21 +88,43 @@ impl ExecutorService for ExecutorServer {
                 match raw_tx.tx {
                     Some(Tx::NormalTx(utx)) => {
                         if let Some(tx) = utx.transaction {
-                            let mut payload = Bytes::from(tx.data);
-                            let cc_name_len = payload.get_u64();
-                            let cc_name =
-                                String::from_utf8_lossy(&payload.split_to(cc_name_len as usize))
-                                    .to_string();
                             let (notifier, waiter) = oneshot::channel();
-                            self.send_task(
-                                &cc_name,
-                                Task::Executor(ExecutorCommand::Execute {
-                                    payload: payload.to_vec(),
-                                    notifier,
-                                }),
-                            )
-                            .await
-                            .map_err(|e| Status::not_found(e.to_string()))?;
+
+                            let executor_call = ExecutorCall::decode(&tx.data[..])
+                                .map_err(|e| Status::invalid_argument(e.to_string()))?;
+                            let (cc_name, cmd) = match executor_call
+                                .call
+                                .ok_or_else(|| Status::invalid_argument("empty executor call"))?
+                            {
+                                Call::Invoke(ChaincodeInvoke { cc_name, msg }) => {
+                                    let msg = msg.ok_or_else(|| {
+                                        Status::invalid_argument("empty chaincode invoke msg")
+                                    })?;
+                                    (
+                                        cc_name,
+                                        Task::Executor(ExecutorCommand::Execute { msg, notifier }),
+                                    )
+                                }
+                                Call::Put(LedgerPut {
+                                    cc_name,
+                                    key,
+                                    value,
+                                }) => {
+                                    (
+                                        cc_name,
+                                        Task::Executor(ExecutorCommand::Put {
+                                            tx_id: tx_hash, // FIXME: is it correct to use tx_hash as tx_id?
+                                            key,
+                                            value,
+                                        }),
+                                    )
+                                }
+                            };
+
+                            self.send_task(&cc_name, cmd)
+                                .await
+                                .map_err(|e| Status::not_found(e.to_string()))?;
+
                             let TransactionResult { msg, result } = waiter.await.unwrap();
                             updated_cc.insert(cc_name.clone());
                             info!("tx completed:\n  msg: `{}`\n  result: `{}`", msg, result);

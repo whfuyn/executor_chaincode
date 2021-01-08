@@ -1,0 +1,24 @@
+syntax = "proto3";
+
+package composer;
+
+/* fabric-protos */
+import "peer/chaincode_shim.proto";
+
+message ChaincodeInvoke {
+    string cc_name = 1;
+    protos.ChaincodeMessage msg = 2;
+}
+
+message LedgerPut {
+    string cc_name = 1;
+    string key = 2;
+    bytes value = 3;
+}
+
+message ExecutorCall {
+    oneof call {
+        ChaincodeInvoke invoke = 1;
+        LedgerPut put = 2;
+    }
+}

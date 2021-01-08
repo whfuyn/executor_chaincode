@@ -90,6 +90,10 @@ mod queryresult {
     tonic::include_proto!("queryresult");
 }
 
+mod composer {
+    tonic::include_proto!("composer");
+}
+
 use chaincode::ChaincodeRegistry;
 use executor::ChaincodeExecutor;
 

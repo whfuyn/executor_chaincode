@@ -19,14 +19,15 @@ fn main() {
         .format(true)
         .compile(
             &[
-                "fabric-protos/common/common.proto",
-                "fabric-protos/msp/identities.proto",
-                "fabric-protos/peer/chaincode.proto",
-                "fabric-protos/peer/chaincode_shim.proto",
-                "fabric-protos/ledger/rwset/kvrwset/kv_rwset.proto",
-                "fabric-protos/ledger/queryresult/kv_query_result.proto",
+                "composer.proto",
+                "common/common.proto",
+                "msp/identities.proto",
+                "peer/chaincode.proto",
+                "peer/chaincode_shim.proto",
+                "ledger/rwset/kvrwset/kv_rwset.proto",
+                "ledger/queryresult/kv_query_result.proto",
             ],
-            &["fabric-protos"],
+            &["protos", "protos/fabric-protos"],
         )
-        .unwrap_or_else(|e| panic!("Failed to compile protos {:?}", e));
+        .unwrap_or_else(|e| panic!("{}", e));
 }

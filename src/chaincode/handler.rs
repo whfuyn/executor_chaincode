@@ -517,8 +517,7 @@ impl Handler {
 
     async fn handle_executor_cmd(&mut self, cmd: ExecutorCommand) -> Result<()> {
         match cmd {
-            ExecutorCommand::Execute { payload, notifier } => {
-                let msg = ChaincodeMessage::decode(&payload[..])?;
+            ExecutorCommand::Execute { msg, notifier } => {
                 let ctx = TransactionContext {
                     channel_id: msg.channel_id.clone(),
                     tx_id: msg.txid.clone(),
@@ -527,6 +526,13 @@ impl Handler {
                 };
                 self.contexts.insert(ctx_id(&msg), ctx);
                 self.cc_side.send(msg).await?;
+            }
+            ExecutorCommand::Put { tx_id, key, value } => {
+                let tx_id = String::from_utf8_lossy(tx_id.as_slice());
+                self.ledger
+                    .set_state(&self.cc_name, &tx_id, &key, value)
+                    .await;
+                // Ledger will be synced later.
             }
             ExecutorCommand::Sync => self.ledger.sync().await,
         }

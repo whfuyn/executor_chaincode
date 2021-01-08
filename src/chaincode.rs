@@ -47,8 +47,13 @@ pub struct TransactionResult {
 #[derive(Debug)]
 pub enum ExecutorCommand {
     Execute {
-        payload: Vec<u8>,
+        msg: ChaincodeMessage,
         notifier: oneshot::Sender<TransactionResult>,
+    },
+    Put {
+        tx_id: Vec<u8>,
+        key: String,
+        value: Vec<u8>,
     },
     Sync,
 }

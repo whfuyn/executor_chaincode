@@ -397,11 +397,12 @@ Jfn1p8cfo4BPd3tSllZEIbXE2uCMkKE4LGmo
         let cc_name = "asset-transfer-basic";
         let (mut org, _) = default_orgs();
 
-        let mut txs = vec![];
-        txs.push(org.build("InitLedger", &[], &[]));
-        txs.push(org.build("GetAllAssets", &[], &[]));
-        txs.push(org.build("TransferAsset", &["asset6", "Christopher"], &[]));
-        txs.push(org.build("ReadAsset", &["asset6"], &[]));
+        let txs = vec![
+            org.build("InitLedger", &[], &[]),
+            org.build("GetAllAssets", &[], &[]),
+            org.build("TransferAsset", &["asset6", "Christopher"], &[]),
+            org.build("ReadAsset", &["asset6"], &[]),
+        ];
 
         let executor_addr = "127.0.0.1:50003";
         let chaincode_listen_addr = "127.0.0.1:7052";
@@ -416,67 +417,67 @@ Jfn1p8cfo4BPd3tSllZEIbXE2uCMkKE4LGmo
         let cc_name = "asset-transfer-secured-agreement";
         let (mut org1, mut org2) = default_orgs();
 
-        let mut txs = vec![];
-
-        txs.push(org1.build(
-            "CreateAsset",
-            &["asset1", "A new asset for Org1MSP"],
-            &[("asset_properties", "asset1's property")],
-        ));
-        txs.push(org1.build("GetAssetPrivateProperties", &["asset1"], &[]));
-        txs.push(org1.build("ReadAsset", &["asset1"], &[]));
-        txs.push(org1.build(
-            "ChangePublicDescription",
-            &["asset1", "This asset is for sale"],
-            &[],
-        ));
-        txs.push(org1.build("ReadAsset", &["asset1"], &[]));
-        txs.push(org2.build(
-            "ChangePublicDescription",
-            &["asset1", "The worst asset"],
-            &[],
-        ));
-        txs.push(org1.build("ReadAsset", &["asset1"], &[]));
-        txs.push(org1.build(
-            "AgreeToSell",
-            &["asset1"],
-            &[("asset_price", "{\"asset_id\":\"asset1\",\"trade_id\":\"109f4b3c50d7b0df729d299bc6f8e9ef9066971f\",\"price\":110}")]
-        ));
-        txs.push(org1.build("GetAssetSalesPrice", &["asset1"], &[]));
-        txs.push(org2.build(
-            "VerifyAssetProperties",
-            &["asset1"],
-            &[("asset_properties", "asset1's property")],
-        ));
-        txs.push(org2.build(
-            "AgreeToBuy",
-            &["asset1"],
-            &[("asset_price", "{\"asset_id\":\"asset1\",\"trade_id\":\"109f4b3c50d7b0df729d299bc6f8e9ef9066971f\",\"price\":100}")]
-        ));
-        txs.push(org2.build("GetAssetBidPrice", &["asset1"], &[]));
-        txs.push(org1.build(
-            "TransferAsset",
-            &["asset1","Org2MSP"],
-            &[("asset_properties", "asset1's property"), ("asset_price", "{\"asset_id\":\"asset1\",\"trade_id\":\"109f4b3c50d7b0df729d299bc6f8e9ef9066971f\",\"price\":100}")]
-        ));
-        txs.push(org1.build(
-            "AgreeToSell",
-            &["asset1"],
-            &[("asset_price", "{\"asset_id\":\"asset1\",\"trade_id\":\"109f4b3c50d7b0df729d299bc6f8e9ef9066971f\",\"price\":100}")]
-        ));
-        txs.push(org1.build(
-            "TransferAsset",
-            &["asset1","Org2MSP"],
-            &[("asset_properties", "asset1's property"), ("asset_price", "{\"asset_id\":\"asset1\",\"trade_id\":\"109f4b3c50d7b0df729d299bc6f8e9ef9066971f\",\"price\":100}")]
-        ));
-        txs.push(org2.build("ReadAsset", &["asset1"], &[]));
-        txs.push(org2.build("GetAssetPrivateProperties", &["asset1"], &[]));
-        txs.push(org2.build(
-            "ChangePublicDescription",
-            &["asset1", "This asset is not for sale"],
-            &[],
-        ));
-        txs.push(org2.build("ReadAsset", &["asset1"], &[]));
+        let txs = vec![
+            org1.build(
+                "CreateAsset",
+                &["asset1", "A new asset for Org1MSP"],
+                &[("asset_properties", "asset1's property")],
+            ),
+            org1.build("GetAssetPrivateProperties", &["asset1"], &[]),
+            org1.build("ReadAsset", &["asset1"], &[]),
+            org1.build(
+                "ChangePublicDescription",
+                &["asset1", "This asset is for sale"],
+                &[],
+            ),
+            org1.build("ReadAsset", &["asset1"], &[]),
+            org2.build(
+                "ChangePublicDescription",
+                &["asset1", "The worst asset"],
+                &[],
+            ),
+            org1.build("ReadAsset", &["asset1"], &[]),
+            org1.build(
+                "AgreeToSell",
+                &["asset1"],
+                &[("asset_price", "{\"asset_id\":\"asset1\",\"trade_id\":\"109f4b3c50d7b0df729d299bc6f8e9ef9066971f\",\"price\":110}")]
+            ),
+            org1.build("GetAssetSalesPrice", &["asset1"], &[]),
+            org2.build(
+                "VerifyAssetProperties",
+                &["asset1"],
+                &[("asset_properties", "asset1's property")],
+            ),
+            org2.build(
+                "AgreeToBuy",
+                &["asset1"],
+                &[("asset_price", "{\"asset_id\":\"asset1\",\"trade_id\":\"109f4b3c50d7b0df729d299bc6f8e9ef9066971f\",\"price\":100}")]
+            ),
+            org2.build("GetAssetBidPrice", &["asset1"], &[]),
+            org1.build(
+                "TransferAsset",
+                &["asset1","Org2MSP"],
+                &[("asset_properties", "asset1's property"), ("asset_price", "{\"asset_id\":\"asset1\",\"trade_id\":\"109f4b3c50d7b0df729d299bc6f8e9ef9066971f\",\"price\":100}")]
+            ),
+            org1.build(
+                "AgreeToSell",
+                &["asset1"],
+                &[("asset_price", "{\"asset_id\":\"asset1\",\"trade_id\":\"109f4b3c50d7b0df729d299bc6f8e9ef9066971f\",\"price\":100}")]
+            ),
+            org1.build(
+                "TransferAsset",
+                &["asset1","Org2MSP"],
+                &[("asset_properties", "asset1's property"), ("asset_price", "{\"asset_id\":\"asset1\",\"trade_id\":\"109f4b3c50d7b0df729d299bc6f8e9ef9066971f\",\"price\":100}")]
+            ),
+            org2.build("ReadAsset", &["asset1"], &[]),
+            org2.build("GetAssetPrivateProperties", &["asset1"], &[]),
+            org2.build(
+                "ChangePublicDescription",
+                &["asset1", "This asset is not for sale"],
+                &[],
+            ),
+            org2.build("ReadAsset", &["asset1"], &[]),
+        ];
 
         let executor_addr = "127.0.0.1:51003";
         let chaincode_listen_addr = "127.0.0.1:7152";
@@ -487,8 +488,8 @@ Jfn1p8cfo4BPd3tSllZEIbXE2uCMkKE4LGmo
 
     async fn exec_txs(executor: ChaincodeExecutor, cc_name: &str, txs: Vec<TestTransaction>) {
         use std::time::Duration;
-        use tokio::time::delay_for;
-        delay_for(Duration::from_secs(5)).await;
+        use tokio::time::sleep;
+        sleep(Duration::from_secs(5)).await;
         let mut sender = executor
             .cc_registry
             .entry(cc_name)

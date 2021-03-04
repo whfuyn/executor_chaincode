@@ -29,6 +29,7 @@ use tokio::fs;
 use tokio::fs::File;
 use tokio::fs::OpenOptions;
 use tokio::io::AsyncReadExt;
+use tokio::io::AsyncSeekExt;
 use tokio::io::AsyncWriteExt;
 
 const STATE_FILE_NAME: &str = "state.data";

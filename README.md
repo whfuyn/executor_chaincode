@@ -2,6 +2,11 @@
 
 [![Build Status](https://travis-ci.org/cita-cloud/executor_chaincode.svg?branch=main)](https://travis-ci.org/cita-cloud/executor_chaincode)
 
+> Update:
+> I've added CouchDB and EventHub support for `executor_chaincode`.
+> But unfortunately, it's not allowed to be open source, neither the code improvements are backported here.
+> Only the docker image is openly available, [here](https://hub.docker.com/r/citacloud/executor_chaincode_ext).
+
 `executor_chaincode` is an implementation of CITA-Cloud's executor. 
 
 It's compatible with fabric's chaincode with some limitations.
@@ -97,6 +102,7 @@ Paginated queries are not supported yet. Queries will return full results at onc
 Invoking other chaincodes is not supported yet.
 
 ### 5. DB specified queries
+> Update: supported in `executor_chaincode_ext`.
 
 ```go
 ctx.GetStub().GetQueryResult(queryString)
